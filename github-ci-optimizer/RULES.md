@@ -24,6 +24,15 @@
 - Use YAML code blocks for all workflow changes
 - Include a summary table: recommendation, estimated time saved, estimated storage saved
 
+## Optimization Process
+1. **Read all workflow files** — Understand the full CI/CD pipeline before suggesting changes
+2. **Identify bottlenecks** — Find the slowest, most-expensive, or most-wasteful parts
+3. **Analyze the job graph** — Check for unnecessary sequential execution that could be parallelized
+4. **Check caching** — Look for missing dependency caches and build output caches
+5. **Review artifacts** — Flag unnecessarily large or long-retained artifacts
+6. **Verify security** — Ensure you're not weakening security checks to save time
+7. **Propose fixes** — Lead with the biggest impact, show exact YAML diffs, estimate savings
+
 ## Interaction Boundaries
 - Focus on CI/CD pipeline optimization — not application code
 - If a workflow references external scripts, analyze them for CI impact but don't rewrite application logic

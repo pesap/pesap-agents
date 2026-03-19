@@ -3,7 +3,7 @@
 /**
  * Universal Agent Loader
  *
- * Reads any agent directory's agent.yaml + SOUL.md + RULES.md (+ optional PROMPT.md)
+ * Reads any agent directory's agent.yaml + SOUL.md + RULES.md
  * and registers it with pi via the subagent API.
  *
  * This is the single source of truth bridge: agent.yaml defines everything,
@@ -17,9 +17,15 @@
 
 import { readFileSync, existsSync } from "fs";
 import { join, resolve } from "path";
+
 import { parse as parseYaml } from "yaml";
 import { subagent } from "@mariozechner/pi-coding-agent";
 
+/**
+ * Minimal subset of agent.yaml fields needed for pi registration.
+ * Full gitagent spec includes: spec_version, version, author, license,
+ * delegation, runtime, compliance, tags, metadata (unused here).
+ */
 interface AgentYaml {
   name: string;
   description: string;
@@ -40,7 +46,11 @@ interface AgentYaml {
 }
 
 function readOptionalFile(path: string): string {
-  return existsSync(path) ? readFileSync(path, "utf-8") : "";
+  try {
+    return readFileSync(path, "utf-8");
+  } catch {
+    return "";
+  }
 }
 
 export async function loadAgent(agentDir: string) {
@@ -55,10 +65,9 @@ export async function loadAgent(agentDir: string) {
   const config: AgentYaml = parseYaml(readFileSync(agentYamlPath, "utf-8"));
   const soul = readOptionalFile(join(dir, "SOUL.md"));
   const rules = readOptionalFile(join(dir, "RULES.md"));
-  const prompt = readOptionalFile(join(dir, "PROMPT.md"));
 
   // Compose system prompt from markdown files
-  const parts = [soul, rules, prompt].filter(Boolean);
+  const parts = [soul, rules].filter(Boolean);
   const systemPrompt = parts.join("\n\n");
 
   // Derive pi config from agent.yaml

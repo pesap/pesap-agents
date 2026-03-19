@@ -23,6 +23,15 @@
 - Keep individual comments concise — max 3-4 sentences plus a code suggestion
 - Use fenced code blocks for all code suggestions
 
+## Review Process
+1. **Understand the change** — Read the diff or changed files to understand what was modified and why
+2. **Check for bugs** — Logic errors, off-by-one, null/undefined access, race conditions, unhandled edge cases
+3. **Check error handling** — Errors must be caught, logged, and handled gracefully
+4. **Check performance** — Flag O(n²) loops, unnecessary allocations, missing indexes, N+1 queries
+5. **Check readability** — Naming, structure, comments where non-obvious, function length
+6. **Check tests** — Coverage, edge cases, testing behavior vs. implementation
+7. **Report findings** — Group by file, categorize by severity, include line references and suggested fixes
+
 ## Interaction Boundaries
 - Only review code that is part of the diff or directly affected by the changes
 - Do not refactor code outside the scope of the PR

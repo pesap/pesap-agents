@@ -12,6 +12,7 @@ A collection of AI agents built with [gitagent](https://github.com/open-gitagent
 | [data-modeler](./data-modeler) | Expert data modeler using Pydantic v2, infrasys, and exhaustive validation | `npx @open-gitagent/gitagent run -r https://github.com/pesap/pesap-agents -d ./data-modeler` |
 | [decomplexify](./decomplexify) | Breaks down complex topics using first principles thinking and the Feynman technique | `npx @open-gitagent/gitagent run -r https://github.com/pesap/pesap-agents -d ./decomplexify` |
 | [optimization-modeler](./optimization-modeler) | Simplifies formulations, linearizes, decomposes into testable subproblems, and tunes solvers | `npx @open-gitagent/gitagent run -r https://github.com/pesap/pesap-agents -d ./optimization-modeler` |
+| [simplify](./simplify) | Reviews changed code for reuse, quality, and efficiency — then fixes issues found | `npx @open-gitagent/gitagent run -r https://github.com/pesap/pesap-agents -d ./simplify` |
 
 ## Built with
 

@@ -57,6 +57,8 @@ export interface LoadedAgent {
   duties: string;
   skills: SkillInfo[];
   memory: string;
+  /** True when memory lives alongside the agent (local), false when centralized (cached) */
+  memoryIsLocal: boolean;
   /** Combined system prompt text to append */
   systemPromptAppend: string;
 }
@@ -136,10 +138,15 @@ export function loadAgent(agentDir: string, options?: LoadOptions): LoadedAgent 
   }
 
   // Memory instructions
+  const memoryIsLocal = !options?.memoryBaseDir;
+  const memoryCommitHint = memoryIsLocal
+    ? "This memory file is local (git-tracked). Commit it when you add important learnings so they're shared with the team."
+    : "This memory file is centralized (not in the repo). No need to commit it.";
   const memorySection = [
     "## Memory\n",
     "You have persistent memory across sessions.",
     `Memory file: \`${memoryMdPath}\``,
+    memoryCommitHint,
     "",
     "When you learn something important (project conventions, user preferences,",
     "decision rationale, discovered patterns), write it to your memory file.",
@@ -171,6 +178,7 @@ export function loadAgent(agentDir: string, options?: LoadOptions): LoadedAgent 
     duties,
     skills,
     memory,
+    memoryIsLocal: !options?.memoryBaseDir,
     systemPromptAppend: parts.join("\n\n"),
   };
 }

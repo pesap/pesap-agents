@@ -101,7 +101,10 @@ export default function piGitagent(pi: ExtensionAPI) {
   /** Resolve + load in one shot. Every load path funnels through here. */
   function resolveAndLoad(ref: string, cwd: string): LoadedAgent {
     const resolved = resolveAgent(ref, { cwd });
-    return loadAgent(resolved.dir, { memoryBaseDir: MEMORY_DIR });
+    // Local agents keep memory alongside the agent directory.
+    // Remote/cached agents use centralized memory so it survives cache clears.
+    const opts = resolved.remote ? { memoryBaseDir: MEMORY_DIR } : {};
+    return loadAgent(resolved.dir, opts);
   }
 
   /** Set the agent as current, persist the ref, update status bar. */

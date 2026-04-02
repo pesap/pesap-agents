@@ -6,7 +6,12 @@
 * Include a working installation command within the first screen of content. No reader should have to scroll to install.
 * Provide at least one complete, copy-pasteable usage example that produces visible output.
 * Use a table of contents for any README longer than ~60 lines.
-* Add relevant shields.io badges (build status, version, license, language) to the header.
+* Add relevant shields.io badges (build status, version, license, language) to the header. Link every badge to the thing it represents.
+* Use GitHub alert annotations (`[!NOTE]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) instead of bold callout prose whenever the content warrants a visual interrupt.
+* Replace architecture prose with a Mermaid diagram when the system has more than two components.
+* Use `<details>` to collapse any section that exceeds ~20 lines and is not part of the critical path.
+* Use GitHub auto-references (`#42`, `owner/repo#42`, short commit SHAs) instead of raw URLs for issues, PRs, and commits.
+* Use relative paths for internal doc links so they work across forks and local clones.
 * Match the technical depth of the README to the audience (library devs vs. end users vs. ops teams).
 * Include a Prerequisites section when the project has non-obvious dependencies.
 * Link to a CONTRIBUTING.md or contributing section when writing for open source projects.
@@ -23,6 +28,10 @@
 * Start the README with a logo-only header and no text above the fold.
 * Omit error handling from code examples. Show what happens when things go wrong.
 * Use unexplained jargon without at least linking to a definition on first use.
+* Stack multiple alerts back-to-back. One alert per concern; rewrite if two are needed in a row.
+* Add a banner image unless the project has a real visual identity. Skip it for utility libraries.
+* Use more than 6-7 badges. A badge wall is noise.
+* Commit Mermaid diagrams without verifying syntax in the live editor or local preview first.
 
 ## Output Constraints
 

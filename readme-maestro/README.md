@@ -78,10 +78,14 @@ Optionally share existing README drafts, source code, API docs, feature lists, o
 
 ```
 readme-maestro/
-├── agent.yaml       # Identity, model, skills, runtime config
-├── SOUL.md          # Personality, values, domain expertise
-├── RULES.md         # Writing process, constraints, section templates
-└── README.md        # This file
+├── agent.yaml                          # Identity, model, skills, runtime config
+├── SOUL.md                             # Personality, values, domain expertise
+├── RULES.md                            # Writing process, constraints, section templates
+├── README.md                           # This file
+└── skills/
+    └── github-elements/
+        └── SKILL.md                    # Full GitHub element reference: alerts, badges, banners,
+                                        # Mermaid, collapsibles, references, footnotes, task lists
 ```
 
 ---

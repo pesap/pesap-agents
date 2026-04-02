@@ -18,6 +18,7 @@ model:
 skills:
   - technical-writing
   - markdown-formatting
+  - github-elements
 tools: []
 delegation:
   mode: auto

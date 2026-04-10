@@ -55,6 +55,34 @@ The extension also registers tools that the LLM can call directly. When you say 
 | `gitagent_list` | List available agents in a directory or repo |
 | `gitagent_remember` | Save a learning to the agent's persistent memory |
 
+## Skill Usage Protocol and Verification Hooks
+
+Agents with skills now get an explicit runtime protocol:
+
+- Match the task against available skills before execution
+- Apply the selected skill checklists while working
+- Include a `Skills Used` section in the final response (or `none` with reason)
+
+A lightweight hook audits assistant responses and records pass/fail skill checks in session entries (`gitagent-skill-check`). In strict mode, if a response is missing the section, pi queues an automatic follow-up reminder and logs `gitagent-skill-enforcement`.
+
+## Automatic Feedback Memory Hook
+
+Like a mini diary for user preferences, pi-gitagent can auto-capture feedback-looking user messages (preferences, corrections, praise with meta context) and save them into the active agent memory as dated `[feedback/<topic>/<sentiment>]` entries.
+
+This hook is **opt-in per agent** (default off), configured in `agent.yaml` under `metadata.feedback_memory_hook`.
+
+Each capture is logged as a session entry (`gitagent-feedback-captured`) with inferred signal and confidence, deduplicated per turn, and filtered by the configured confidence threshold.
+
+```yaml
+metadata:
+  category: developer-tools
+  feedback_memory_hook:
+    enabled: true
+    min_confidence: 0.9
+    max_chars: 220
+    redact_sensitive: true
+```
+
 When you load an agent, pi-gitagent:
 1. Resolves the agent (local dir or GitHub clone, cached at `~/.pitagent/cache/`)
 2. Parses `agent.yaml`, `SOUL.md`, `RULES.md`, skills, knowledge, memory
@@ -78,7 +106,7 @@ When you load an agent, pi-gitagent:
 | `RULES.md` | Appended to system prompt (hard constraints) |
 | `PROMPT.md` | Appended to system prompt (operational instructions) |
 | `DUTIES.md` | Appended to system prompt (segregation of duties) |
-| `skills/` | Listed in system prompt as available capabilities |
+| `skills/` | Loaded into prompt with `When to use` + checklist instructions, plus response protocol (`Skills Used`) |
 | `knowledge/` | `always_load` docs baked into system prompt |
 | `memory/MEMORY.md` | Loaded into context, agent can write learnings back |
 | `agent.yaml` model | Auto-switches pi to the preferred model |
@@ -92,7 +120,7 @@ Agent memory is stored in a centralized location at `~/.pitagent/memory/<agent-n
 - **Same memory regardless of source.** Whether you load an agent locally or from GitHub, the agent reads and writes from the same memory file. No duplicated or lost state.
 - **Safe from accidents.** Memory isn't sitting inside a shallow clone that can be wiped at any time.
 
-The LLM saves learnings by calling the `gitagent_remember` tool. Entries are concise and dated. On session shutdown, if the LLM didn't explicitly save anything and the session was non-trivial (2+ user messages), a session note is auto-appended so no context is silently lost.
+The LLM saves learnings by calling the `gitagent_remember` tool, and feedback can also be captured automatically by hook (for agents with `feedback_memory_hook.enabled=true`) when user messages look like preferences/corrections. Entries are concise and dated. On session shutdown, if nothing was saved and the session was non-trivial (2+ user messages), a session note is auto-appended so no context is silently lost.
 
 ```
 ~/.pitagent/
@@ -116,6 +144,7 @@ The LLM saves learnings by calling the `gitagent_remember` tool. Entries are con
 | [data-modeler](./data-modeler) | Expert data modeler (Pydantic v2, infrasys) |
 | [decomplexify](./decomplexify) | First principles + Feynman technique |
 | [optimization-modeler](./optimization-modeler) | Simplifies formulations, tunes solvers |
+| [dslop](./dslop) | Multi-agent pre-commit deslop pass with Python and Rust overlays |
 
 ## Try without installing
 

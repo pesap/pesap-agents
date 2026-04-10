@@ -12,6 +12,7 @@ model:
   fallback:
     - claude-sonnet-4-5-20250929
     - claude-haiku-4-5-20251001
+    - gpt-5.3-codex
   constraints:
     temperature: 0.4
     max_tokens: 8192
@@ -83,3 +84,8 @@ tags:
   - developer-experience
 metadata:
   category: developer-tools
+  feedback_memory_hook:
+    enabled: true
+    min_confidence: 0.9
+    max_chars: 220
+    redact_sensitive: true

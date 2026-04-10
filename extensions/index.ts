@@ -43,6 +43,7 @@ import { homedir } from "node:os";
 
 const MEMORY_DIR = join(homedir(), ".pitagent", "memory");
 const ARCHITECT_REF = "gh:shreyas-lyzr/architect";
+const SKILL_ENFORCEMENT_MAX_STREAK = 2;
 
 const USAGE = [
   "Usage:",
@@ -60,6 +61,9 @@ export default function piGitagent(pi: ExtensionAPI) {
   let pendingRestore: { agent: LoadedAgent | null; ref: string | null } | null =
     null;
   let rememberedThisSession = false;
+  let lastSkillAuditFingerprint: string | null = null;
+  let lastFeedbackFingerprint: string | null = null;
+  let skillEnforcementStreak = 0;
 
   /** Append a dated entry to the agent's memory file. Trims to 200 lines.
    *  Uses the agent's own memoryDir so local agents write to their folder,
@@ -99,6 +103,327 @@ export default function piGitagent(pi: ExtensionAPI) {
       .trim();
   }
 
+  function todayIsoDate(): string {
+    return new Date().toISOString().split("T")[0];
+  }
+
+  function saveAgentMemoryEntry(agent: LoadedAgent, entry: string) {
+    appendToMemory(agent, entry);
+    rememberedThisSession = true;
+  }
+
+  function getLastAssistantText(ctx: any): string {
+    const entries = ctx.sessionManager?.getBranch?.() ?? [];
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+      if (entry?.type !== "message") continue;
+      const msg = (entry as any).message;
+      if (msg?.role === "assistant") return extractText(msg.content);
+    }
+    return "";
+  }
+
+  function getLastUserText(ctx: any): string {
+    const entries = ctx.sessionManager?.getBranch?.() ?? [];
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+      if (entry?.type !== "message") continue;
+      const msg = (entry as any).message;
+      if (msg?.role === "user") return extractText(msg.content);
+    }
+    return "";
+  }
+
+  function inferSentiment(feedback: string): "positive" | "negative" | "neutral" {
+    const lower = feedback.toLowerCase();
+    if (/(great|nice|love|perfect|thanks|good job|awesome)/.test(lower)) return "positive";
+    if (/(bad|wrong|hate|not good|broken|annoying|doesn't work|does not work|regression)/.test(lower)) {
+      return "negative";
+    }
+    return "neutral";
+  }
+
+  function formatFeedbackEntry(params: {
+    feedback: string;
+    topic?: string;
+    source?: string;
+    sentiment?: "positive" | "negative" | "neutral";
+  }): string {
+    const topic = (params.topic ?? "general").trim() || "general";
+    const source = (params.source ?? "user").trim() || "user";
+    const sentiment = params.sentiment ?? inferSentiment(params.feedback);
+    return `- ${todayIsoDate()}: [feedback/${topic}/${sentiment}] ${params.feedback.trim()} (source: ${source})`;
+  }
+
+  function getFeedbackHookConfig(agent: LoadedAgent): {
+    enabled: boolean;
+    minConfidence: number;
+    maxChars: number;
+    redactSensitive: boolean;
+  } {
+    const metadata = agent.manifest.metadata as Record<string, unknown> | undefined;
+    const raw = metadata?.feedback_memory_hook as Record<string, unknown> | undefined;
+
+    const minConfidenceRaw = raw?.min_confidence;
+    const maxCharsRaw = raw?.max_chars;
+
+    const minConfidence =
+      typeof minConfidenceRaw === "number" && minConfidenceRaw >= 0 && minConfidenceRaw <= 1
+        ? minConfidenceRaw
+        : 0.9;
+    const maxChars =
+      typeof maxCharsRaw === "number" && maxCharsRaw >= 80 && maxCharsRaw <= 500
+        ? Math.floor(maxCharsRaw)
+        : 220;
+
+    return {
+      enabled: raw?.enabled === true,
+      minConfidence,
+      maxChars,
+      redactSensitive: raw?.redact_sensitive !== false,
+    };
+  }
+
+  function redactPotentialSensitiveText(text: string): string {
+    const patterns: Array<[RegExp, string]> = [
+      [/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]"],
+      [/\b(?:sk|pk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g, "[redacted-api-key]"],
+      [/\bghp_[A-Za-z0-9]{20,}\b/g, "[redacted-github-token]"],
+      [/\bAKIA[0-9A-Z]{16}\b/g, "[redacted-aws-key]"],
+      [/\b(?:\d[ -]*?){13,19}\b/g, "[redacted-number]"],
+    ];
+
+    return patterns.reduce((acc, [pattern, replacement]) => acc.replace(pattern, replacement), text);
+  }
+
+  function normalizeFeedbackText(feedback: string, maxChars: number): string {
+    const compact = feedback.replace(/\s+/g, " ").trim();
+    if (compact.length <= maxChars) return compact;
+
+    const sentence = compact.match(/^(.{1,500}?[.!?])(?:\s|$)/);
+    const candidate = sentence?.[1]?.trim() ?? compact;
+    if (candidate.length <= maxChars) return candidate;
+
+    return `${candidate.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
+  }
+
+  function inferFeedbackTopic(feedback: string): string {
+    const lower = feedback.toLowerCase();
+    if (/(style|format|tone|concise|verbosity|wording|response)/.test(lower)) {
+      return "communication";
+    }
+    if (/(memory|remember|feedback|preference)/.test(lower)) {
+      return "memory";
+    }
+    if (/(performance|speed|fast|slow|latency)/.test(lower)) {
+      return "performance";
+    }
+    if (/(test|lint|clippy|quality|bug|error handling)/.test(lower)) {
+      return "quality";
+    }
+    if (/(agent|skill|hook|tool)/.test(lower)) {
+      return "agent-behavior";
+    }
+    return "general";
+  }
+
+  function parseAutoFeedback(text: string): {
+    feedback: string;
+    topic: string;
+    signal: string;
+    confidence: number;
+  } | null {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (normalized.length < 16) return null;
+
+    const lower = normalized.toLowerCase();
+    const hasPreference =
+      /\bi\s+(?:prefer|want|need|expect|like|love|hate|do not want|don't want)\b/.test(lower) ||
+      /\b(?:from now on|next time)\b/.test(lower);
+    const hasCorrection =
+      /\b(?:wrong|incorrect|not what i asked|you missed|that's not|that is not|instead)\b/.test(
+        lower,
+      );
+    const hasPraise = /\b(?:great|nice|good|perfect|awesome|thanks|thank you)\b/.test(lower);
+    const hasMeta =
+      /\b(?:agent|response|answer|format|style|tone|memory|remember|manual|automatic|hook|tool|skill)\b/.test(
+        lower,
+      );
+
+    const shouldCapture = hasCorrection || hasPreference || (hasPraise && hasMeta);
+    if (!shouldCapture) return null;
+
+    const signal = hasCorrection
+      ? "correction"
+      : hasPreference
+        ? "preference"
+        : "praise";
+
+    let confidence = 0.6;
+    if (hasMeta) confidence += 0.2;
+    if (hasCorrection || hasPreference) confidence += 0.2;
+    if (confidence > 1) confidence = 1;
+
+    return {
+      feedback: normalized,
+      topic: inferFeedbackTopic(normalized),
+      signal,
+      confidence,
+    };
+  }
+
+  function auditAutoFeedback(ctx: any) {
+    if (!currentAgent) return;
+
+    const cfg = getFeedbackHookConfig(currentAgent);
+    if (!cfg.enabled) return;
+
+    const userText = getLastUserText(ctx);
+    if (!userText) return;
+
+    const parsed = parseAutoFeedback(userText);
+    if (!parsed) return;
+    if (parsed.confidence < cfg.minConfidence) return;
+
+    const sanitized = cfg.redactSensitive
+      ? redactPotentialSensitiveText(parsed.feedback)
+      : parsed.feedback;
+    const concise = normalizeFeedbackText(sanitized, cfg.maxChars);
+    if (concise.length < 12) return;
+
+    const fingerprint = `${currentAgent.manifest.name}:${concise.slice(-220)}`;
+    if (fingerprint === lastFeedbackFingerprint) return;
+    lastFeedbackFingerprint = fingerprint;
+
+    const entry = formatFeedbackEntry({
+      feedback: concise,
+      topic: parsed.topic,
+      source: "user-auto",
+    });
+    saveAgentMemoryEntry(currentAgent, entry);
+
+    pi.appendEntry("gitagent-feedback-captured", {
+      agent: currentAgent.manifest.name,
+      mode: "auto-inferred",
+      topic: parsed.topic,
+      signal: parsed.signal,
+      confidence: parsed.confidence,
+      min_confidence: cfg.minConfidence,
+      at: new Date().toISOString(),
+    });
+
+    ctx.ui.notify(
+      `📝 Auto-saved user feedback to ${currentAgent.manifest.name} memory (${parsed.signal}).`,
+      "info",
+    );
+  }
+
+  function verifySkillSection(
+    agent: LoadedAgent,
+    assistantText: string,
+  ): { ok: boolean; reason: string; matchedSkills: string[] } {
+    if (agent.skills.length === 0) {
+      return { ok: true, reason: "no_skills", matchedSkills: [] };
+    }
+
+    const hasSkillsSection =
+      /(?:^|\n)#{1,6}\s*skills?\s*(?:used|applied|check|activation)\b/i.test(
+        assistantText,
+      ) ||
+      /skills?\s*(?:used|applied|check|activation)\s*:/i.test(assistantText);
+
+    if (!hasSkillsSection) {
+      return {
+        ok: false,
+        reason: "missing_skills_used_section",
+        matchedSkills: [],
+      };
+    }
+
+    const lower = assistantText.toLowerCase();
+    const matchedSkills = agent.skills
+      .filter((skill) => lower.includes(skill.name.toLowerCase()))
+      .map((skill) => skill.name);
+
+    const explicitlyNone =
+      /skills?\s*(?:used|applied|check|activation)[^\n]*none/i.test(
+        assistantText,
+      ) || /no\s+applicable\s+skill/i.test(assistantText);
+
+    if (matchedSkills.length === 0 && !explicitlyNone) {
+      return {
+        ok: false,
+        reason: "skills_section_without_known_skill_or_none",
+        matchedSkills: [],
+      };
+    }
+
+    return { ok: true, reason: "ok", matchedSkills };
+  }
+
+  function auditSkillUsage(
+    ctx: any,
+  ): { checked: boolean; result?: { ok: boolean; reason: string; matchedSkills: string[] } } {
+    if (!currentAgent || currentAgent.skills.length === 0) {
+      skillEnforcementStreak = 0;
+      return { checked: false };
+    }
+
+    const assistantText = getLastAssistantText(ctx);
+    if (!assistantText) return { checked: false };
+
+    const fingerprint = `${currentAgent.manifest.name}:${assistantText.slice(-160)}`;
+    if (fingerprint === lastSkillAuditFingerprint) return { checked: false };
+    lastSkillAuditFingerprint = fingerprint;
+
+    const result = verifySkillSection(currentAgent, assistantText);
+    pi.appendEntry("gitagent-skill-check", {
+      agent: currentAgent.manifest.name,
+      ok: result.ok,
+      reason: result.reason,
+      matchedSkills: result.matchedSkills,
+      at: new Date().toISOString(),
+    });
+
+    if (!result.ok) {
+      ctx.ui.notify(
+        `⚠️ Skill hook: ${currentAgent.manifest.name} is missing a valid Skills Used section (${result.reason}).`,
+        "info",
+      );
+
+      if (skillEnforcementStreak < SKILL_ENFORCEMENT_MAX_STREAK) {
+        skillEnforcementStreak += 1;
+        const enforcementPrompt = [
+          "Your previous response failed the skill verification hook.",
+          "Please restate your answer and include a `Skills Used` section.",
+          "List at least one loaded skill by name with one-line evidence, or write `Skills Used: none` with a reason.",
+          "Do not change conclusions unless you found an actual error.",
+        ].join(" ");
+
+        pi.appendEntry("gitagent-skill-enforcement", {
+          agent: currentAgent.manifest.name,
+          reason: result.reason,
+          streak: skillEnforcementStreak,
+          at: new Date().toISOString(),
+        });
+        pi.sendUserMessage(enforcementPrompt, { deliverAs: "followUp" });
+        ctx.ui.notify(
+          `🧰 Skill hook enforcement queued (${skillEnforcementStreak}/${SKILL_ENFORCEMENT_MAX_STREAK}).`,
+          "info",
+        );
+      } else {
+        ctx.ui.notify(
+          `🛑 Skill hook reached max enforcement streak (${SKILL_ENFORCEMENT_MAX_STREAK}).`,
+          "info",
+        );
+      }
+    } else {
+      skillEnforcementStreak = 0;
+    }
+
+    return { checked: true, result };
+  }
+
   /** Resolve + load in one shot. Every load path funnels through here. */
   function resolveAndLoad(ref: string, cwd: string): LoadedAgent {
     const resolved = resolveAgent(ref, { cwd });
@@ -117,6 +442,9 @@ export default function piGitagent(pi: ExtensionAPI) {
     currentAgent = agent;
     currentRef = ref;
     rememberedThisSession = false;
+    lastSkillAuditFingerprint = null;
+    lastFeedbackFingerprint = null;
+    skillEnforcementStreak = 0;
     pi.appendEntry("gitagent-loaded", { ref });
     ctx.ui.setStatus("gitagent", `🤖 ${agent.manifest.name}`);
   }
@@ -242,6 +570,7 @@ export default function piGitagent(pi: ExtensionAPI) {
       const name = currentAgent.manifest.name;
       currentAgent = null;
       currentRef = null;
+      lastFeedbackFingerprint = null;
       pi.appendEntry("gitagent-unloaded", {});
       ctx.ui.setStatus("gitagent", undefined);
       return {
@@ -341,10 +670,8 @@ export default function piGitagent(pi: ExtensionAPI) {
           "No agent loaded. Load an agent first with gitagent_load.",
         );
       }
-      const date = new Date().toISOString().split("T")[0];
-      const entry = `- ${date}: ${params.learning}`;
-      appendToMemory(currentAgent, entry);
-      rememberedThisSession = true;
+      const entry = `- ${todayIsoDate()}: ${params.learning}`;
+      saveAgentMemoryEntry(currentAgent, entry);
       return {
         content: [
           {
@@ -440,6 +767,7 @@ export default function piGitagent(pi: ExtensionAPI) {
             const name = currentAgent.manifest.name;
             currentAgent = null;
             currentRef = null;
+            lastFeedbackFingerprint = null;
             pi.appendEntry("gitagent-unloaded", {});
             ctx.ui.notify(
               `Unloaded ${name}. Takes effect on next prompt.`,
@@ -496,14 +824,21 @@ export default function piGitagent(pi: ExtensionAPI) {
   }
 
   // Auto-restore previous agent when the architect finishes its turn
-  pi.on("agent_end", async (_event, ctx) => {
-    if (!pendingRestore) return;
+  pi.on("agent_end", async (_event, ctx: any) => {
+    if (!pendingRestore) {
+      auditAutoFeedback(ctx);
+      auditSkillUsage(ctx);
+      return;
+    }
 
     const restore = pendingRestore;
     pendingRestore = null;
 
     currentAgent = restore.agent;
     currentRef = restore.ref;
+    lastSkillAuditFingerprint = null;
+    lastFeedbackFingerprint = null;
+    skillEnforcementStreak = 0;
 
     if (currentAgent) {
       ctx.ui.setStatus("gitagent", `🤖 ${currentAgent.manifest.name}`);
@@ -563,6 +898,7 @@ export default function piGitagent(pi: ExtensionAPI) {
   // ── Helpers ────────────────────────────────────────────────────────────
 
   function buildAgentInfo(agent: LoadedAgent) {
+    const feedbackCfg = getFeedbackHookConfig(agent);
     return {
       name: agent.manifest.name,
       version: agent.manifest.version,
@@ -571,6 +907,13 @@ export default function piGitagent(pi: ExtensionAPI) {
       skills: agent.skills.map((s) => s.name),
       memory: agent.memory ? "has content" : "empty",
       source: agent.dir,
+      skill_verification_hook:
+        agent.skills.length > 0
+          ? `active (strict mode: auto follow-up enforcement, max streak ${SKILL_ENFORCEMENT_MAX_STREAK})`
+          : "inactive (no skills loaded)",
+      feedback_memory_hook: feedbackCfg.enabled
+        ? `active (min_confidence=${feedbackCfg.minConfidence}, max_chars=${feedbackCfg.maxChars}, redact_sensitive=${feedbackCfg.redactSensitive})`
+        : "inactive (set metadata.feedback_memory_hook.enabled=true in agent.yaml)",
     };
   }
 

@@ -6,7 +6,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { parseYaml } from "./yaml.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -46,6 +46,9 @@ export interface SkillInfo {
   description: string;
   dir: string;
   skillMdPath: string;
+  relativePath: string;
+  whenToUse: string;
+  instructionChecklist: string[];
 }
 
 export interface LoadedAgent {
@@ -76,6 +79,34 @@ function parseSkillFrontmatter(raw: string): { name: string; description: string
   if (!match) return { name: "", description: "" };
   const fm = parseYaml(match[1]) as Record<string, unknown>;
   return { name: (fm.name as string) ?? "", description: (fm.description as string) ?? "" };
+}
+
+function stripFrontmatter(raw: string): string {
+  return raw.replace(/^---\n[\s\S]*?\n---\n?/, "").trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractMarkdownSection(markdown: string, heading: string): string {
+  const regex = new RegExp(`^##\\s+${escapeRegExp(heading)}\\s*\\n([\\s\\S]*?)(?=\\n##\\s+|$)`, "m");
+  const match = markdown.match(regex);
+  return match ? match[1].trim() : "";
+}
+
+function parseSkillBody(raw: string): { whenToUse: string; instructionChecklist: string[] } {
+  const body = stripFrontmatter(raw);
+  const whenToUse = extractMarkdownSection(body, "When to Use");
+  const instructions = extractMarkdownSection(body, "Instructions");
+  const instructionChecklist = instructions
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^(?:\d+\.|-|\*)\s+/.test(line))
+    .map((line) => line.replace(/^(?:\d+\.|-|\*)\s+/, "").trim())
+    .filter(Boolean);
+
+  return { whenToUse, instructionChecklist };
 }
 
 export interface LoadOptions {
@@ -110,8 +141,18 @@ export function loadAgent(agentDir: string, options?: LoadOptions): LoadedAgent 
       if (!entry.isDirectory()) continue;
       const skillMdPath = join(skillsDir, entry.name, "SKILL.md");
       if (!existsSync(skillMdPath)) continue;
-      const { name, description } = parseSkillFrontmatter(readFileSync(skillMdPath, "utf-8"));
-      skills.push({ name: name || entry.name, description, dir: join(skillsDir, entry.name), skillMdPath });
+      const rawSkill = readFileSync(skillMdPath, "utf-8");
+      const { name, description } = parseSkillFrontmatter(rawSkill);
+      const { whenToUse, instructionChecklist } = parseSkillBody(rawSkill);
+      skills.push({
+        name: name || entry.name,
+        description,
+        dir: join(skillsDir, entry.name),
+        skillMdPath,
+        relativePath: relative(agentDir, skillMdPath),
+        whenToUse,
+        instructionChecklist,
+      });
     }
   }
 
@@ -165,7 +206,39 @@ export function loadAgent(agentDir: string, options?: LoadOptions): LoadedAgent 
   if (duties) parts.push(duties);
   if (prompt) parts.push(prompt);
   if (skills.length > 0) {
-    parts.push(`## Available Skills\n\n${skills.map((s) => `- **${s.name}**: ${s.description}`).join("\n")}`);
+    parts.push([
+      "## Skill Execution Protocol",
+      "",
+      "When a task arrives, map it against your skills before doing deep work.",
+      "1. Pick the most relevant skill(s) for the task.",
+      "2. Follow each skill checklist while executing.",
+      "3. In your final response, include a short `Skills Used` section with:",
+      "   - skill name(s)",
+      "   - one-line evidence for each skill",
+      "4. If no skill applies, write `Skills Used: none` and why.",
+      "",
+      "Skill verification hooks may check that your final response includes this section.",
+    ].join("\n"));
+
+    const skillsText = skills
+      .map((s) => {
+        const checklist =
+          s.instructionChecklist.length > 0
+            ? s.instructionChecklist.map((item) => `  - ${item}`).join("\n")
+            : "  - Follow the instructions in SKILL.md";
+
+        return [
+          `### ${s.name}`,
+          `Path: \`${s.relativePath}\``,
+          `Description: ${s.description || "(no description provided)"}`,
+          `When to use: ${s.whenToUse || "Use this when the task matches this domain."}`,
+          "Checklist:",
+          checklist,
+        ].join("\n");
+      })
+      .join("\n\n");
+
+    parts.push(`## Available Skills\n\n${skillsText}`);
   }
   parts.push(...knowledgeParts);
   if (complianceParts.length > 0) parts.push(`## Compliance Constraints\n\n${complianceParts.join("\n")}`);

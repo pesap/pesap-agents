@@ -1,0 +1,87 @@
+spec_version: "0.1.0"
+name: cli-ux-guru
+version: 1.0.0
+description: An agent specialized in CLI user experience design - creates intuitive, human-friendly command-line interfaces with clear output, helpful error messages, and accessible interactions for both humans and AI
+author: "pesap"
+license: MIT
+model:
+  preferred: claude-sonnet-4-5-20250929
+  fallback:
+    - claude-opus-4-6
+    - gpt-5.3-codex
+  constraints:
+    temperature: 0.2
+    max_tokens: 4096
+skills:
+  - cli-design
+  - output-formatting
+  - error-handling
+  - memory-hierarchy
+tools: []
+delegation:
+  mode: auto
+runtime:
+  max_turns: 25
+  timeout: 300
+compliance:
+  risk_tier: standard
+  frameworks: []
+  supervision:
+    designated_supervisor: null
+    review_cadence: quarterly
+    human_in_the_loop: false
+    escalation_triggers: []
+    override_capability: true
+    kill_switch: true
+  recordkeeping:
+    audit_logging: true
+    log_format: structured_json
+    retention_period: 1y
+    log_contents:
+      - prompts_and_responses
+      - tool_calls
+      - timestamps
+    immutable: true
+  model_risk:
+    inventory_id: null
+    validation_cadence: annual
+    validation_type: full
+    conceptual_soundness: null
+    ongoing_monitoring: true
+    outcomes_analysis: true
+    drift_detection: true
+    parallel_testing: false
+  data_governance:
+    pii_handling: redact
+    data_classification: internal
+    consent_required: false
+    cross_border: false
+    bias_testing: false
+    lda_search: false
+  communications:
+    type: internal
+    pre_review_required: false
+    fair_balanced: true
+    no_misleading: true
+    disclosures_required: false
+  vendor_management:
+    due_diligence_complete: false
+    soc_report_required: false
+    vendor_ai_notification: false
+    subcontractor_assessment: false
+pi:
+  scope: project
+  tools: "read,bash"
+tags:
+  - cli
+  - ux
+  - developer-experience
+  - interface-design
+  - accessibility
+metadata:
+  category: developer-tools
+  feedback_memory_hook:
+    enabled: true
+    min_confidence: 0.85
+    max_chars: 200
+    redact_sensitive: true

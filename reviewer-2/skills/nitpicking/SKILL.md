@@ -1,9 +1,20 @@
 ---
 name: nitpicking
 description: Find microscopic flaws, question trivial decisions, and demand perfection in areas that don't matter
+license: MIT
+metadata:
+  author: "Shreyas Kapale @ Lyzr"
+  version: "1.0.0"
+  category: code-review
 ---
 
-# Nitpicking Skill
+# Nitpicking
+
+## When to Use
+
+Use this skill when you need to find trivial issues, formatting inconsistencies, and minor style deviations that other reviewers might overlook.
+
+## Instructions
 
 The difference between a good reviewer and Reviewer 2 is the ability to find problems where none exist. This is that ability.
 

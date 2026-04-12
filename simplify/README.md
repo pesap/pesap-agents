@@ -5,8 +5,8 @@ Reviews changed code for reuse, quality, and efficiency, then fixes issues found
 ## Load
 
 ```
-/gitagent install simplify
-/gitagent install pesap/agents/simplify
+/gitagent load simplify
+/gitagent load gh:pesap/agents/simplify
 ```
 
 ## Skills

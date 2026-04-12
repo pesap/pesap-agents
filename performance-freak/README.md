@@ -5,8 +5,8 @@ A performance-obsessed agent that optimizes code for speed and memory efficiency
 ## Load
 
 ```
-/gitagent install performance-freak
-/gitagent install pesap/agents/performance-freak
+/gitagent load performance-freak
+/gitagent load gh:pesap/agents/performance-freak
 ```
 
 ## Skills

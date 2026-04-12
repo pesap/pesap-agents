@@ -5,8 +5,8 @@ An AI code reviewer that analyzes pull requests and code changes for bugs, secur
 ## Load
 
 ```
-/gitagent install code-reviewer
-/gitagent install pesap/agents/code-reviewer
+/gitagent load code-reviewer
+/gitagent load gh:pesap/agents/code-reviewer
 ```
 
 ## Skills

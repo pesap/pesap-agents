@@ -15,7 +15,11 @@ metadata:
 
 Any time you are writing or reviewing a README or markdown file that will be rendered on GitHub. GitHub supports a superset of CommonMark with its own extensions. Use them intentionally to improve scannability, navigation, and visual hierarchy.
 
-## Alerts (Annotations)
+## Instructions
+
+Apply the following GitHub-specific markdown extensions to produce professional, well-structured documentation.
+
+### Alerts (Annotations)
 
 GitHub renders five alert types as colored callout blocks. Use them sparingly and only when the content genuinely warrants the visual weight.
 

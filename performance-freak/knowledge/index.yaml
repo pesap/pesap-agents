@@ -1,0 +1,5 @@
+documents:
+  - path: big-o-reference.md
+    always_load: true
+  - path: data-structure-choices.md
+    always_load: true

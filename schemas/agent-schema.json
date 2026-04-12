@@ -1,0 +1,140 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/pesap/agents/schemas/agent-schema.json",
+  "title": "GitAgent Agent Specification",
+  "description": "Schema for validating agent.yaml files in the gitagent standard",
+  "type": "object",
+  "required": ["spec_version", "name", "version", "description", "author", "license"],
+  "properties": {
+    "spec_version": {
+      "type": "string",
+      "description": "Version of the gitagent spec",
+      "enum": ["0.1.0", "1.0"],
+      "examples": ["0.1.0"]
+    },
+    "name": {
+      "type": "string",
+      "description": "Unique identifier for the agent",
+      "pattern": "^[a-z0-9-]+$",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version of the agent",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the agent",
+      "minLength": 10,
+      "maxLength": 500
+    },
+    "author": {
+      "type": "string",
+      "description": "Author name or organization"
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX license identifier",
+      "examples": ["MIT", "Apache-2.0", "BSD-3-Clause"]
+    },
+    "model": {
+      "type": "object",
+      "required": ["preferred"],
+      "properties": {
+        "preferred": {
+          "type": "string",
+          "description": "Preferred model identifier"
+        },
+        "fallback": {
+          "type": "array",
+          "description": "Fallback models in order of preference",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "constraints": {
+          "type": "object",
+          "properties": {
+            "temperature": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "max_tokens": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200000
+            }
+          }
+        }
+      }
+    },
+    "skills": {
+      "type": "array",
+      "description": "List of skills the agent possesses",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+$"
+      },
+      "minItems": 1
+    },
+    "tools": {
+      "type": "array",
+      "description": "Tools available to the agent",
+      "items": {
+        "type": "string"
+      }
+    },
+    "delegation": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["auto", "manual", "disabled"]
+        }
+      }
+    },
+    "pi": {
+      "type": "object",
+      "description": "pi-specific configuration",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": ["project", "workspace", "global"]
+        },
+        "tools": {
+          "type": "string",
+          "description": "Comma-separated list of tools"
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "description": "Runtime execution limits",
+      "properties": {
+        "max_turns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Timeout in seconds"
+        }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "description": "Categorization tags",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+$"
+      }
+    }
+  },
+  "additionalProperties": false
+}

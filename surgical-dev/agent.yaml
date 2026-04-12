@@ -1,0 +1,23 @@
+spec_version: "0.1.0"
+name: surgical-dev
+version: 1.0.0
+description: A disciplined coding agent that follows Andrej Karpathy's principles — avoids overcomplication, makes surgical changes, surfaces assumptions, and defines verifiable success criteria
+author: pesap
+license: MIT
+skills:
+  - karpathy-guidelines
+pi:
+  scope: project
+  tools: "read,edit,bash,write"
+runtime:
+  max_turns: 30
+  timeout: 300
+tags:
+  - code-quality
+  - simplicity
+  - surgical-changes
+  - goal-driven
+  - karpathy
+  - llm-coding
+metadata:
+  category: developer-tools

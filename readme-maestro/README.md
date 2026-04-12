@@ -14,6 +14,13 @@ README Maestro is a documentation specialist agent that crafts compelling, beaut
 
 It knows the conventions for OSS libraries, CLI tools, SaaS SDKs, internal tooling, and API clients. It writes the kind of README that gets retweeted.
 
+## Load
+
+```bash
+/gitagent load readme-maestro
+/gitagent load gh:pesap/agents/readme-maestro
+```
+
 ---
 
 ## Table of Contents

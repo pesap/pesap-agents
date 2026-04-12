@@ -5,8 +5,8 @@ Expert data modeler that follows Pydantic best practices, leverages infrasys for
 ## Load
 
 ```
-/gitagent install data-modeler
-/gitagent install pesap/agents/data-modeler
+/gitagent load data-modeler
+/gitagent load gh:pesap/agents/data-modeler
 ```
 
 ## Skills

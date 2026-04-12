@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/pesap/agents/schemas/skill-schema.json",
+  "title": "GitAgent Skill Specification",
+  "description": "Schema for validating SKILL.md frontmatter",
+  "type": "object",
+  "required": ["name", "description"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique identifier for the skill",
+      "pattern": "^[a-z0-9-]+$",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description",
+      "minLength": 10,
+      "maxLength": 200
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX license identifier",
+      "examples": ["MIT", "Apache-2.0"]
+    },
+    "allowed-tools": {
+      "type": "string",
+      "description": "Comma-separated list of allowed tools"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "author": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

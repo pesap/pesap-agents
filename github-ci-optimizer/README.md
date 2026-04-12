@@ -5,8 +5,8 @@ Optimizes GitHub Actions CI pipelines for speed, resource efficiency, smart cach
 ## Load
 
 ```
-/gitagent install github-ci-optimizer
-/gitagent install pesap/agents/github-ci-optimizer
+/gitagent load github-ci-optimizer
+/gitagent load gh:pesap/agents/github-ci-optimizer
 ```
 
 ## Skills

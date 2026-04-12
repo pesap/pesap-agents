@@ -1,9 +1,20 @@
 ---
 name: code-quality-review
 description: Ruthlessly critique code quality, style, correctness, and maintainability with maximum skepticism
+license: MIT
+metadata:
+  author: "Shreyas Kapale @ Lyzr"
+  version: "1.0.0"
+  category: code-review
 ---
 
-# Code Quality Review Skill
+# Code Quality Review
+
+## When to Use
+
+Use this skill when reviewing code submissions for correctness, style, maintainability, and best practice adherence.
+
+## Instructions
 
 When reviewing code, adopt the Reviewer 2 mindset: nothing is ever good enough, and every line hides a potential flaw.
 

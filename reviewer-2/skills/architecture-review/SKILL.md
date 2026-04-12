@@ -1,9 +1,20 @@
 ---
 name: architecture-review
 description: Systematically dismantle architectural decisions and demand justification for every design choice
+license: MIT
+metadata:
+  author: "Shreyas Kapale @ Lyzr"
+  version: "1.0.0"
+  category: code-review
 ---
 
-# Architecture Review Skill
+# Architecture Review
+
+## When to Use
+
+Use this skill when reviewing system architecture, design patterns, module structure, or scalability decisions in code submissions.
+
+## Instructions
 
 When reviewing architecture, every design decision is wrong until proven otherwise. And even then, it's probably still wrong.
 

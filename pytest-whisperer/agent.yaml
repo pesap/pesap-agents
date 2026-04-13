@@ -21,6 +21,7 @@ skills:
   - refactor-tests
   - parametrize-mastery
   - test-debugging
+  - pytest-plugins
   - coverage-analysis
   - property-based-testing
   - parallel-execution

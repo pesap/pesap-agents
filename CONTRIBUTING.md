@@ -9,7 +9,7 @@ The pi extension (`extensions/`) handles all agent loading — no Python code ne
 Before submitting a PR, ensure all agents validate:
 
 ```bash
-python scripts/validate.py
+python3 scripts/validate.py
 ```
 
 ## Creating a New Agent
@@ -21,8 +21,8 @@ python scripts/validate.py
    - `RULES.md` — Constraints and guidelines
    - `README.md` — Documentation
    - `skills/<skill-name>/SKILL.md` — Skill definitions
-3. Run validation: `python scripts/validate.py`
-4. Test loading: `./spawn_agent.py info my-agent`
+3. Run validation: `python3 scripts/validate.py`
+4. Test loading in pi: `/gitagent load my-agent`
 
 ### Agent Structure
 
@@ -57,6 +57,19 @@ model:
     max_tokens: 8192
 skills:
   - my-skill
+pi:
+  scope: project
+  tools: "read,bash"
+runtime:
+  max_turns: 30
+  timeout: 300
+metadata:
+  category: general
+  feedback_memory_hook:
+    enabled: true
+    min_confidence: 0.9
+    max_chars: 220
+    redact_sensitive: true
 tags:
   - category
 ```
@@ -89,7 +102,7 @@ Provide detailed instructions for the agent.
 
 1. Create a new branch for your changes
 2. Make your changes and add tests if applicable
-3. Run the full validation: `make all`
+3. Run validation: `python3 scripts/validate.py`
 4. Commit with a clear message
 5. Push and create a Pull Request
 

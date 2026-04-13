@@ -90,6 +90,10 @@ readme-maestro/
 ├── RULES.md                            # Writing process, constraints, section templates
 ├── README.md                           # This file
 └── skills/
+    ├── technical-writing/
+    │   └── SKILL.md                    # Clarity, precision, and audience-calibrated prose
+    ├── markdown-formatting/
+    │   └── SKILL.md                    # Markdown structure, rendering, and readability rules
     └── github-elements/
         └── SKILL.md                    # Full GitHub element reference: alerts, badges, banners,
                                         # Mermaid, collapsibles, references, footnotes, task lists

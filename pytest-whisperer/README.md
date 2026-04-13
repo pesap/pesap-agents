@@ -6,7 +6,7 @@ A pytest specialist that writes, organizes, and optimizes Python test suites. Pr
 
 ```
 /gitagent load pytest-whisperer
-/gitagent load pesap/agents/pytest-whisperer
+/gitagent load gh:pesap/agents/pytest-whisperer
 ```
 
 ## Run
@@ -24,6 +24,7 @@ npx @open-gitagent/gitagent run -r https://github.com/pesap/agents -a pytest-whi
 - **refactor-tests** — Refactor from classes to functions, eliminate mocks, fix flaky tests, and modernize to idiomatic pytest
 - **parametrize-mastery** — Advanced parametrize patterns: table-driven tests, indirect parametrize, combinatorial stacking, external data, readable IDs
 - **test-debugging** — Diagnose failures with --lf, --pdb, traceback control, capsys, caplog, and stepwise mode
+- **pytest-plugins** — Pick and integrate pytest plugins safely, with explicit value and low maintenance overhead
 - **coverage-analysis** — Configure pytest-cov, set thresholds, interpret branch coverage, and integrate diff-cover in CI
 - **property-based-testing** — Write property-based tests with Hypothesis: strategies, shrinking, stateful testing, and profile management
 - **parallel-execution** — Configure pytest-xdist for parallel runs, resource isolation per worker, and CI test splitting
@@ -53,6 +54,8 @@ pytest-whisperer/
     ├── parametrize-mastery/
     │   └── SKILL.md
     ├── test-debugging/
+    │   └── SKILL.md
+    ├── pytest-plugins/
     │   └── SKILL.md
     ├── coverage-analysis/
     │   └── SKILL.md

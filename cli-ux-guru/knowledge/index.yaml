@@ -1,24 +1,21 @@
-knowledge_base:
-  name: cli-ux-guru
-  version: "1.0.0"
-  
-  index:
-    - file: cli-design-principles.md
-      topic: Core UX patterns and anti-patterns for CLI design
-      when_to_use: When making fundamental CLI design decisions
-      
-    - file: output-patterns.md
-      topic: Output formatting (tables, progress bars, JSON, etc.)
-      when_to_use: When deciding how to present results
-      
-    - file: error-messages.md
-      topic: Writing helpful error messages
-      when_to_use: When designing error handling and user guidance
-      
-    - file: interactive-patterns.md
-      topic: Prompts, confirmations, wizards
-      when_to_use: When building interactive CLI flows
-      
-    - file: memory-hierarchy.md
-      topic: When to persist state vs. ask for input
-      when_to_use: When designing configuration and state management
+documents:
+  - path: cli-design-principles.md
+    always_load: true
+    topic: Core UX patterns and anti-patterns for CLI design
+    when_to_use: When making fundamental CLI design decisions
+  - path: output-patterns.md
+    always_load: true
+    topic: Output formatting (tables, progress bars, JSON, etc.)
+    when_to_use: When deciding how to present results
+  - path: error-messages.md
+    always_load: true
+    topic: Writing helpful error messages
+    when_to_use: When designing error handling and user guidance
+  - path: interactive-patterns.md
+    always_load: true
+    topic: Prompts, confirmations, wizards
+    when_to_use: When building interactive CLI flows
+  - path: memory-hierarchy.md
+    always_load: true
+    topic: When to persist state vs. ask for input
+    when_to_use: When designing configuration and state management

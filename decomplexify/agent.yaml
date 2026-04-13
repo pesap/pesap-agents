@@ -25,8 +25,7 @@ runtime:
   timeout: 300
 pi:
   scope: project
-  tools: ""
-  thinking: "enabled"
+  tools: "read,bash"
 tags:
   - thinking
   - first-principles

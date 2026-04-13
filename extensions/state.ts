@@ -5,10 +5,22 @@ export interface PendingRestore {
   ref: string | null;
 }
 
+export type WorkflowMode = "run" | "chain";
+
+export interface WorkflowRun {
+  mode: WorkflowMode;
+  refs: string[];
+  task: string;
+  currentStep: number;
+  previousOutput: string | null;
+  restore: PendingRestore;
+}
+
 export interface GitAgentRuntimeState {
   currentAgent: LoadedAgent | null;
   currentRef: string | null;
   pendingRestore: PendingRestore | null;
+  activeWorkflow: WorkflowRun | null;
   rememberedThisSession: boolean;
   lastSkillAuditFingerprint: string | null;
   lastFeedbackFingerprint: string | null;
@@ -20,6 +32,7 @@ export function createRuntimeState(): GitAgentRuntimeState {
     currentAgent: null,
     currentRef: null,
     pendingRestore: null,
+    activeWorkflow: null,
     rememberedThisSession: false,
     lastSkillAuditFingerprint: null,
     lastFeedbackFingerprint: null,

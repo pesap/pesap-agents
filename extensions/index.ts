@@ -8,9 +8,10 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { resolveAgent, resolveDir, listAgentsInDir } from "./resolve.js";
 import { loadAgent, mapModel, type LoadedAgent } from "./loader.js";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { createRuntimeState } from "./state.js";
+import { createRuntimeState, type PendingRestore, type WorkflowMode } from "./state.js";
 import {
   appendToMemory,
   extractText,
@@ -29,15 +30,17 @@ const SKILL_ENFORCEMENT_MAX_STREAK = 2;
 
 const USAGE = [
   "Usage:",
-  "  /gitagent load <ref>         Load an agent into this session",
-  "  /gitagent new <prompt>       Create a new agent via the architect",
-  "  /gitagent list [ref]         List available agents",
-  "  /gitagent recommend <task>   Recommend the best agent for a task",
-  "  /gitagent doctor [ref]       Run diagnostics on the current or target agent",
-  "  /gitagent policy             Show runtime policy for the loaded agent",
-  "  /gitagent info               Show loaded agent",
-  "  /gitagent refresh            Re-pull and reload",
-  "  /gitagent unload            Remove agent context",
+  "  /gitagent load <ref>                Load an agent into this session",
+  "  /gitagent run <ref> -- <task>       Run one agent without changing the saved session agent",
+  "  /gitagent chain <a> <b> -- <task>   Run agents sequentially, passing output forward",
+  "  /gitagent new <prompt>              Create a new agent via the architect",
+  "  /gitagent list [ref]                List available agents",
+  "  /gitagent recommend <task>          Recommend the best agent for a task",
+  "  /gitagent doctor [ref]              Run diagnostics on the current or target agent",
+  "  /gitagent policy [ref]              Show runtime policy for the loaded or target agent",
+  "  /gitagent info                      Show loaded agent",
+  "  /gitagent refresh                   Re-pull latest from the current ref and reload",
+  "  /gitagent unload                    Remove agent context",
 ].join("\n");
 
 interface UiContext {
@@ -322,6 +325,11 @@ export default function piGitagent(pi: ExtensionAPI) {
         "info",
       );
 
+      if (state.activeWorkflow) {
+        ctx.ui.notify("Skipping skill enforcement during an active gitagent workflow step.", "info");
+        return { checked: true, result };
+      }
+
       if (state.skillEnforcementStreak < SKILL_ENFORCEMENT_MAX_STREAK) {
         state.skillEnforcementStreak += 1;
         const enforcementPrompt = [
@@ -361,18 +369,25 @@ export default function piGitagent(pi: ExtensionAPI) {
     return loadAgent(resolved.dir, opts);
   }
 
-  function activateAgent(
-    agent: LoadedAgent,
-    ref: string,
-    ctx: { ui: { setStatus: (key: string, text: string | undefined) => void } },
-  ): void {
-    state.currentAgent = agent;
-    state.currentRef = ref;
+  function resetAgentRuntimeState(): void {
     state.rememberedThisSession = false;
     state.lastSkillAuditFingerprint = null;
     state.lastFeedbackFingerprint = null;
     state.skillEnforcementStreak = 0;
-    pi.appendEntry("gitagent-loaded", { ref });
+  }
+
+  function setActiveAgent(
+    agent: LoadedAgent,
+    ref: string | null,
+    ctx: { ui: { setStatus: (key: string, text: string | undefined) => void } },
+    persist = true,
+  ): void {
+    state.currentAgent = agent;
+    state.currentRef = ref;
+    resetAgentRuntimeState();
+    if (persist && ref) {
+      pi.appendEntry("gitagent-loaded", { ref });
+    }
     setAgentStatus(ctx.ui, agent);
   }
 
@@ -387,6 +402,65 @@ export default function piGitagent(pi: ExtensionAPI) {
     return model
       ? await pi.setModel(model as Parameters<ExtensionAPI["setModel"]>[0])
       : false;
+  }
+
+  async function loadActiveAgent(
+    ref: string,
+    ctx: UiContext,
+    persist = true,
+  ): Promise<{
+    agent: LoadedAgent;
+    switched: boolean;
+    modelName: string;
+    policyMode: string;
+    summary: string;
+  }> {
+    const agent = resolveAndLoad(ref, ctx.cwd);
+    setActiveAgent(agent, ref, ctx, persist);
+
+    const switched = await switchModel(agent, ctx);
+    const modelName = agent.manifest.model?.preferred ?? "default";
+    const skillNames = agent.skills.map((skill) => skill.name).join(", ") || "none";
+    const policyMode = getRuntimePolicy(agent).mode;
+
+    return {
+      agent,
+      switched,
+      modelName,
+      policyMode,
+      summary: `Loaded ${agent.manifest.name} (model: ${modelName}, skills: ${skillNames}, policy: ${policyMode}).`,
+    };
+  }
+
+  function formatAgentInfoText(agent: LoadedAgent): string {
+    return Object.entries(buildAgentInfo(agent))
+      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(" | ") || "none" : value}`)
+      .join("\n");
+  }
+
+  function formatAgentListText(agents: string[]): string {
+    return agents.length === 0
+      ? "No agents found"
+      : `Available agents:\n${agents.map((agent) => `  ${agent}`).join("\n")}`;
+  }
+
+  function unloadActiveAgent(
+    ctx: { ui: { setStatus: (key: string, text: string | undefined) => void } },
+    persist = true,
+  ): string | null {
+    if (!state.currentAgent) return null;
+
+    const name = state.currentAgent.manifest.name;
+    state.currentAgent = null;
+    state.currentRef = null;
+    state.pendingRestore = null;
+    state.activeWorkflow = null;
+    resetAgentRuntimeState();
+    if (persist) {
+      pi.appendEntry("gitagent-unloaded", {});
+    }
+    setAgentStatus(ctx.ui, null);
+    return name;
   }
 
   function buildAgentInfo(agent: LoadedAgent) {
@@ -415,25 +489,15 @@ export default function piGitagent(pi: ExtensionAPI) {
     ctx: { ui: { notify: (msg: string, type: string) => void } },
     agent: LoadedAgent,
   ) {
-    const info = buildAgentInfo(agent);
-    const lines = Object.entries(info).map(([k, v]) => {
-      if (Array.isArray(v)) return `${k}: ${v.join(" | ") || "none"}`;
-      return `${k}: ${v}`;
-    });
-    ctx.ui.notify(lines.join("\n"), "info");
+    ctx.ui.notify(formatAgentInfoText(agent), "info");
   }
 
   function getAgentList(ref: string, cwd: string): string[] {
     const dir = ref === cwd ? cwd : resolveDir(ref, { cwd });
-    const subs = listAgentsInDir(dir);
-    const agents: string[] = [];
-    try {
-      loadAgent(dir);
-      agents.push(". (root agent)");
-    } catch {
-      // directory is a collection, not an agent root
+    const agents = listAgentsInDir(dir);
+    if (existsSync(join(dir, "agent.yaml"))) {
+      agents.unshift(". (root agent)");
     }
-    agents.push(...subs);
     return agents;
   }
 
@@ -442,23 +506,115 @@ export default function piGitagent(pi: ExtensionAPI) {
     ref?: string,
   ) {
     try {
-      const agents = getAgentList(ref ?? ctx.cwd, ctx.cwd);
-      if (agents.length === 0) {
-        ctx.ui.notify("No agents found", "info");
-        return;
-      }
-      ctx.ui.notify(`Available agents:\n${agents.map((agent) => `  ${agent}`).join("\n")}`, "info");
+      ctx.ui.notify(formatAgentListText(getAgentList(ref ?? ctx.cwd, ctx.cwd)), "info");
     } catch (error) {
       ctx.ui.notify(`${(error as Error).message}`, "error");
     }
   }
 
+  function parseWorkflowArgs(rest: string): { refs: string[]; task: string } | null {
+    const separatorIndex = rest.indexOf(" -- ");
+    if (separatorIndex === -1) return null;
+
+    const refs = rest
+      .slice(0, separatorIndex)
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    const task = rest.slice(separatorIndex + 4).trim();
+
+    if (refs.length === 0 || task.length === 0) return null;
+    return { refs, task };
+  }
+
+  function restoreAgent(restore: PendingRestore, ctx: UiContext): void {
+    if (restore.agent) {
+      setActiveAgent(restore.agent, restore.ref, ctx, false);
+      return;
+    }
+
+    if (state.currentAgent) {
+      unloadActiveAgent(ctx, false);
+    } else {
+      state.currentRef = null;
+      state.pendingRestore = null;
+      state.activeWorkflow = null;
+      resetAgentRuntimeState();
+      setAgentStatus(ctx.ui, null);
+    }
+  }
+
+  function buildWorkflowPrompt(): string {
+    const workflow = state.activeWorkflow;
+    if (!workflow) return "";
+    if (workflow.currentStep === 0) return workflow.task;
+
+    const previousRef = workflow.refs[workflow.currentStep - 1] ?? "previous-step";
+    const previousOutput = workflow.previousOutput?.trim() || "No previous output was captured.";
+
+    return [
+      `You are step ${workflow.currentStep + 1} of ${workflow.refs.length} in a gitagent ${workflow.mode} workflow.`,
+      `Original task:\n${workflow.task}`,
+      `Previous step (${previousRef}) output:\n${previousOutput}`,
+      "Continue the workflow from that output. Keep the useful signal, discard noise, and produce the next step result.",
+    ].join("\n\n");
+  }
+
+  async function launchWorkflowStep(ctx: UiContext): Promise<void> {
+    const workflow = state.activeWorkflow;
+    if (!workflow) return;
+
+    const ref = workflow.refs[workflow.currentStep];
+    const stepNumber = workflow.currentStep + 1;
+
+    try {
+      const { agent, switched, modelName } = await loadActiveAgent(ref, ctx, false);
+      const label = workflow.mode === "run" ? "Running" : `Chain step ${stepNumber}/${workflow.refs.length}`;
+      ctx.ui.notify(`${label}: ${agent.manifest.name}`, "info");
+      if (switched) {
+        ctx.ui.notify(`Switched model to ${modelName}`, "info");
+      }
+      pi.sendUserMessage(buildWorkflowPrompt(), { deliverAs: "followUp" });
+    } catch (error) {
+      const restore = workflow.restore;
+      state.activeWorkflow = null;
+      restoreAgent(restore, ctx);
+      ctx.ui.notify(`Failed to start workflow step ${stepNumber}: ${(error as Error).message}`, "error");
+    }
+  }
+
+  async function startWorkflow(
+    mode: WorkflowMode,
+    refs: string[],
+    task: string,
+    ctx: UiContext,
+  ): Promise<void> {
+    if (state.activeWorkflow || state.pendingRestore) {
+      ctx.ui.notify("Another gitagent workflow is already in progress.", "error");
+      return;
+    }
+
+    state.activeWorkflow = {
+      mode,
+      refs,
+      task,
+      currentStep: 0,
+      previousOutput: null,
+      restore: { agent: state.currentAgent, ref: state.currentRef },
+    };
+
+    await launchWorkflowStep(ctx);
+  }
+
   function handleNew(piApi: ExtensionAPI, ctx: UiContext, prompt: string) {
+    if (state.activeWorkflow) {
+      ctx.ui.notify("Finish the active gitagent workflow before creating a new agent.", "error");
+      return;
+    }
     try {
       state.pendingRestore = { agent: state.currentAgent, ref: state.currentRef };
-      state.currentAgent = resolveAndLoad(ARCHITECT_REF, ctx.cwd);
-      state.currentRef = null;
-      setAgentStatus(ctx.ui, state.currentAgent);
+      const architect = resolveAndLoad(ARCHITECT_REF, ctx.cwd);
+      setActiveAgent(architect, null, ctx, false);
       ctx.ui.notify("Loaded architect agent. Creating your agent...", "info");
       piApi.sendUserMessage(prompt);
     } catch (error) {
@@ -500,7 +656,8 @@ export default function piGitagent(pi: ExtensionAPI) {
 
     try {
       const agent = resolveAndLoad(lastRef, ctx.cwd);
-      activateAgent(agent, lastRef, ctx);
+      setActiveAgent(agent, lastRef, ctx, false);
+      ctx.ui.notify(`Restored agent: ${agent.manifest.name} [${getRuntimePolicy(agent).mode}]`, "info");
     } catch {
       state.currentAgent = null;
       state.currentRef = null;
@@ -599,20 +756,17 @@ export default function piGitagent(pi: ExtensionAPI) {
       ctx: UiContext,
     ) {
       try {
-        const agent = resolveAndLoad(params.ref, ctx.cwd);
-        activateAgent(agent, params.ref, ctx);
-
-        const switched = await switchModel(agent, ctx);
-        const modelName = agent.manifest.model?.preferred ?? "default";
-        const skillNames = agent.skills.map((skill) => skill.name).join(", ") || "none";
-        const policyMode = getRuntimePolicy(agent).mode;
+        const { agent, switched, modelName, policyMode, summary } = await loadActiveAgent(
+          params.ref,
+          ctx,
+        );
 
         if (params.followUp) {
           pi.sendUserMessage(params.followUp, { deliverAs: "followUp" });
         }
 
         const lines = [
-          `Loaded ${agent.manifest.name} (model: ${modelName}, skills: ${skillNames}, policy: ${policyMode}).`,
+          summary,
           switched ? `Model switched to ${modelName}.` : "",
           params.followUp
             ? `Follow-up task queued: "${params.followUp}" — it will run with ${agent.manifest.name}'s context active.`
@@ -647,18 +801,13 @@ export default function piGitagent(pi: ExtensionAPI) {
       _onUpdate: unknown,
       ctx: UiContext,
     ) {
-      if (!state.currentAgent) {
+      const name = unloadActiveAgent(ctx);
+      if (!name) {
         return {
           content: [{ type: "text", text: "No agent loaded." }],
           details: {},
         };
       }
-      const name = state.currentAgent.manifest.name;
-      state.currentAgent = null;
-      state.currentRef = null;
-      state.lastFeedbackFingerprint = null;
-      pi.appendEntry("gitagent-unloaded", {});
-      setAgentStatus(ctx.ui, null);
       return {
         content: [{ type: "text", text: `Unloaded ${name}. Agent context removed.` }],
         details: { unloaded: name },
@@ -681,11 +830,8 @@ export default function piGitagent(pi: ExtensionAPI) {
         };
       }
       const info = buildAgentInfo(state.currentAgent);
-      const text = Object.entries(info)
-        .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(" | ") || "none" : value}`)
-        .join("\n");
       return {
-        content: [{ type: "text", text }],
+        content: [{ type: "text", text: formatAgentInfoText(state.currentAgent) }],
         details: info,
       };
     },
@@ -712,15 +858,9 @@ export default function piGitagent(pi: ExtensionAPI) {
     ) {
       try {
         const agents = getAgentList(params.ref ?? ctx.cwd, ctx.cwd);
-        if (agents.length === 0) {
-          return {
-            content: [{ type: "text", text: "No agents found" }],
-            details: {},
-          };
-        }
         return {
-          content: [{ type: "text", text: `Available agents:\n${agents.map((agent) => `  ${agent}`).join("\n")}` }],
-          details: { agents },
+          content: [{ type: "text", text: formatAgentListText(agents) }],
+          details: agents.length === 0 ? {} : { agents },
         };
       } catch (error) {
         throw new Error(`Failed to list agents: ${(error as Error).message}`);
@@ -772,22 +912,34 @@ export default function piGitagent(pi: ExtensionAPI) {
             return;
           }
           try {
-            const agent = resolveAndLoad(rest, ctx.cwd);
-            activateAgent(agent, rest, ctx);
-            const switched = await switchModel(agent, ctx);
-            const modelName = agent.manifest.model?.preferred ?? "default";
-            const skillNames = agent.skills.map((skill) => skill.name).join(", ") || "none";
-            const policyMode = getRuntimePolicy(agent).mode;
-            ctx.ui.notify(
-              `Loaded ${agent.manifest.name} (model: ${modelName}, skills: ${skillNames}, policy: ${policyMode})`,
-              "info",
-            );
+            const { switched, modelName, summary } = await loadActiveAgent(rest, ctx);
+            ctx.ui.notify(summary, "info");
             if (switched) {
               ctx.ui.notify(`Switched model to ${modelName}`, "info");
             }
           } catch (error) {
             ctx.ui.notify(`${(error as Error).message}`, "error");
           }
+          return;
+        }
+
+        case "run": {
+          const parsed = parseWorkflowArgs(rest);
+          if (!parsed || parsed.refs.length !== 1) {
+            ctx.ui.notify("Usage: /gitagent run <ref> -- <task>", "error");
+            return;
+          }
+          await startWorkflow("run", parsed.refs, parsed.task, ctx);
+          return;
+        }
+
+        case "chain": {
+          const parsed = parseWorkflowArgs(rest);
+          if (!parsed || parsed.refs.length < 2) {
+            ctx.ui.notify("Usage: /gitagent chain <agent-a> <agent-b> [agent-c ...] -- <task>", "error");
+            return;
+          }
+          await startWorkflow("chain", parsed.refs, parsed.task, ctx);
           return;
         }
 
@@ -835,17 +987,22 @@ export default function piGitagent(pi: ExtensionAPI) {
         }
 
         case "policy": {
-          if (!state.currentAgent) {
-            ctx.ui.notify("No agent loaded.", "info");
-            return;
+          try {
+            const agent = rest ? resolveAndLoad(rest, ctx.cwd) : state.currentAgent;
+            if (!agent) {
+              ctx.ui.notify("No agent loaded. Use /gitagent policy <ref> or load an agent first.", "info");
+              return;
+            }
+            ctx.ui.notify(
+              [
+                `Runtime policy for ${agent.manifest.name}:`,
+                ...formatPolicySummary(agent).map((line) => `  ${line}`),
+              ].join("\n"),
+              "info",
+            );
+          } catch (error) {
+            ctx.ui.notify(`Policy inspection failed: ${(error as Error).message}`, "error");
           }
-          ctx.ui.notify(
-            [
-              `Runtime policy for ${state.currentAgent.manifest.name}:`,
-              ...formatPolicySummary(state.currentAgent).map((line) => `  ${line}`),
-            ].join("\n"),
-            "info",
-          );
           return;
         }
 
@@ -865,8 +1022,8 @@ export default function piGitagent(pi: ExtensionAPI) {
           }
           try {
             resolveAgent(state.currentRef, { refresh: true, cwd: ctx.cwd });
-            state.currentAgent = resolveAndLoad(state.currentRef, ctx.cwd);
-            setAgentStatus(ctx.ui, state.currentAgent);
+            const refreshed = resolveAndLoad(state.currentRef, ctx.cwd);
+            setActiveAgent(refreshed, state.currentRef, ctx, false);
             ctx.ui.notify(
               `Refreshed ${state.currentAgent.manifest.name}. Takes effect on next prompt.`,
               "info",
@@ -878,13 +1035,8 @@ export default function piGitagent(pi: ExtensionAPI) {
         }
 
         case "unload": {
-          if (state.currentAgent) {
-            const name = state.currentAgent.manifest.name;
-            state.currentAgent = null;
-            state.currentRef = null;
-            state.lastFeedbackFingerprint = null;
-            pi.appendEntry("gitagent-unloaded", {});
-            setAgentStatus(ctx.ui, null);
+          const name = unloadActiveAgent(ctx);
+          if (name) {
             ctx.ui.notify(`Unloaded ${name}. Takes effect on next prompt.`, "info");
           } else {
             ctx.ui.notify("No agent loaded.", "info");
@@ -903,6 +1055,37 @@ export default function piGitagent(pi: ExtensionAPI) {
   // ── Architect restore and audits ─────────────────────────────────────
 
   unsafePi.on("agent_end", async (_event: unknown, ctx: UiContext) => {
+    if (state.activeWorkflow) {
+      auditAutoFeedback(ctx);
+      auditSkillUsage(ctx);
+
+      const workflow = state.activeWorkflow;
+      const completedAgentName = state.currentAgent?.manifest.name ?? workflow.refs[workflow.currentStep] ?? "agent";
+
+      if (workflow.currentStep < workflow.refs.length - 1) {
+        workflow.previousOutput = getLastAssistantText(ctx);
+        workflow.currentStep += 1;
+        await launchWorkflowStep(ctx);
+        return;
+      }
+
+      const restore = workflow.restore;
+      const finishedMode = workflow.mode;
+      const stepCount = workflow.refs.length;
+      state.activeWorkflow = null;
+      restoreAgent(restore, ctx);
+      ctx.ui.notify(
+        finishedMode === "run"
+          ? `Completed run with ${completedAgentName}.`
+          : `Completed chain with ${stepCount} step${stepCount === 1 ? "" : "s"}.`,
+        "info",
+      );
+      if (restore.agent) {
+        ctx.ui.notify(`Restored ${restore.agent.manifest.name}.`, "info");
+      }
+      return;
+    }
+
     if (!state.pendingRestore) {
       auditAutoFeedback(ctx);
       auditSkillUsage(ctx);
@@ -911,14 +1094,7 @@ export default function piGitagent(pi: ExtensionAPI) {
 
     const restore = state.pendingRestore;
     state.pendingRestore = null;
-
-    state.currentAgent = restore.agent;
-    state.currentRef = restore.ref;
-    state.lastSkillAuditFingerprint = null;
-    state.lastFeedbackFingerprint = null;
-    state.skillEnforcementStreak = 0;
-
-    setAgentStatus(ctx.ui, state.currentAgent);
+    restoreAgent(restore, ctx);
     if (state.currentAgent) {
       ctx.ui.notify(`Architect finished. Restored ${state.currentAgent.manifest.name}.`, "info");
     } else {

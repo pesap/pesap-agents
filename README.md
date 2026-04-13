@@ -13,7 +13,7 @@ That's it. Now you have `/gitagent` in every pi session.
 ## Usage
 
 ```bash
-# Load a local agent
+# Load a local agent and keep it active in this session
 /gitagent load code-reviewer
 
 # Load from GitHub (shorthand)
@@ -21,6 +21,12 @@ That's it. Now you have `/gitagent` in every pi session.
 
 # Load from GitHub (full URL)
 /gitagent load https://github.com/pesap/agents/tree/main/code-reviewer
+
+# Run one agent without replacing your saved session agent
+/gitagent run simplify -- review this diff for duplication and complexity
+
+# Chain agents sequentially, passing the previous output forward
+/gitagent chain simplify reviewer-2 surgical-dev -- review this diff, refine the findings, then implement the fix
 
 # Load any gitagent repo
 /gitagent load gh:shreyas-lyzr/architect
@@ -38,8 +44,9 @@ That's it. Now you have `/gitagent` in every pi session.
 /gitagent doctor
 /gitagent doctor gh:pesap/agents/code-reviewer
 
-# Explain the loaded agent's runtime policy
+# Explain the loaded or target agent's runtime policy
 /gitagent policy
+/gitagent policy gh:pesap/agents/code-reviewer
 
 # Show loaded agent info
 /gitagent info
@@ -53,11 +60,13 @@ That's it. Now you have `/gitagent` in every pi session.
 
 Loaded agents persist across sessions in the same pi session file, so you don't need to reload after restarts.
 
+`/gitagent run` is a one-shot execution path. It temporarily activates the target agent, runs the task, and then restores your previous session agent. `/gitagent chain` does the same thing across multiple agents in sequence.
+
 The runtime now also derives a safety policy for the loaded agent. By default this comes from `metadata.runtime_policy` when present, otherwise it falls back to sensible compliance-based defaults. File edits and risky shell commands can be auto-allowed, approval-gated, or blocked per agent.
 
 ### LLM-callable tools
 
-The extension also registers tools that the LLM can call directly. When you say "load the simplify agent and review my code", the LLM calls `gitagent_load` with a `followUp` parameter so the review runs with the agent's context active.
+The extension also registers tools that the LLM can call directly. When you say "load the simplify agent and review my code", the LLM calls `gitagent_load` with a `followUp` parameter so the review runs with the agent's context active. The command layer now also supports one-shot and sequential workflows via `/gitagent run` and `/gitagent chain`.
 
 | Tool | Description |
 |------|-------------|

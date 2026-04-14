@@ -1,0 +1,16 @@
+name: learn-skill-workflow
+version: 1
+objective: Create a safe reusable skill from a user topic or source material
+steps:
+  - id: scope
+    action: define_skill_scope_and_boundaries
+  - id: draft
+    action: draft_skill_file
+  - id: validate
+    action: check_safety_brevity_reusability
+  - id: dry-run
+    action: optionally_simulate_usage
+  - id: save
+    action: write_or_update_skill
+  - id: learn
+    action: persist_skill_trigger_notes

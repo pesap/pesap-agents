@@ -8,8 +8,16 @@ A Pi package for a single, self-learning development agent that can orchestrate 
 pi install https://github.com/pesap/pesap-agent
 ```
 
+## Try without installing
+
+```bash
+pi -e git:github.com/pesap/pesap-agent
+```
+
 ## Included commands
 
+- `/start-agent` - enable pesap-agent workflow mode in the current session
+- `/end-agent` - pause pesap-agent workflow mode in the current session
 - `/debug <problem> [--parallel N] [--fix]`
 - `/feature <request> [--parallel N] [--ship]`
 - `/learn-skill <topic> [--from-file path] [--from-url url] [--dry-run]`

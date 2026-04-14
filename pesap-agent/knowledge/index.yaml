@@ -1,0 +1,13 @@
+documents:
+  - path: SOUL.md
+    purpose: identity
+  - path: RULES.md
+    purpose: constraints
+  - path: INSTRUCTIONS.md
+    purpose: operating procedures
+  - path: skillflows/debug-workflow.yaml
+    purpose: debug orchestration
+  - path: skillflows/feature-workflow.yaml
+    purpose: feature orchestration
+  - path: skillflows/learn-skill-workflow.yaml
+    purpose: skill authoring orchestration

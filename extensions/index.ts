@@ -141,6 +141,24 @@ function hasCustomMarker(ctx: ExtensionContext, customType: string): boolean {
   return false;
 }
 
+function getAgentEnabledFromSession(ctx: ExtensionContext): boolean {
+  let enabled = true;
+  for (const entry of ctx.sessionManager.getEntries()) {
+    if (entry.type !== "custom") continue;
+    const custom = entry as { customType?: string; data?: { enabled?: unknown } };
+    if (custom.customType !== AGENT_STATE_TYPE) continue;
+    if (typeof custom.data?.enabled === "boolean") {
+      enabled = custom.data.enabled;
+    }
+  }
+  return enabled;
+}
+
+function setAgentEnabledState(ctx: Pick<ExtensionContext, "hasUI" | "ui">, enabled: boolean): void {
+  agentEnabled = enabled;
+  setStatus(ctx, enabled ? "pesap-agent ready" : "pesap-agent paused");
+}
+
 function removeFlag(input: string, pattern: RegExp): { value: string; match: RegExpMatchArray | null } {
   const match = input.match(pattern);
   if (!match) return { value: input, match: null };
@@ -630,6 +648,10 @@ async function handleDebug(pi: ExtensionAPI, args: string, ctx: ExtensionCommand
     notify(ctx, `Workflow already running (${pendingWorkflow.type}). Wait for completion before starting another.`, "error");
     return;
   }
+  if (!agentEnabled) {
+    notify(ctx, "Agent is paused. Run /start-agent first.", "error");
+    return;
+  }
   if (!parsed.problem) {
     notify(ctx, "Usage: /debug <problem> [--parallel N] [--fix]", "error");
     return;
@@ -665,6 +687,10 @@ async function handleFeature(pi: ExtensionAPI, args: string, ctx: ExtensionComma
     notify(ctx, `Workflow already running (${pendingWorkflow.type}). Wait for completion before starting another.`, "error");
     return;
   }
+  if (!agentEnabled) {
+    notify(ctx, "Agent is paused. Run /start-agent first.", "error");
+    return;
+  }
   if (!parsed.request) {
     notify(ctx, "Usage: /feature <request> [--parallel N] [--ship]", "error");
     return;
@@ -698,6 +724,10 @@ async function handleLearnSkill(pi: ExtensionAPI, args: string, ctx: ExtensionCo
   const parsed = parseLearnSkillArgs(args);
   if (pendingWorkflow) {
     notify(ctx, `Workflow already running (${pendingWorkflow.type}). Wait for completion before starting another.`, "error");
+    return;
+  }
+  if (!agentEnabled) {
+    notify(ctx, "Agent is paused. Run /start-agent first.", "error");
     return;
   }
   if (!parsed.topic && !parsed.fromFile && !parsed.fromUrl) {
@@ -781,11 +811,17 @@ async function handleLearnSkill(pi: ExtensionAPI, args: string, ctx: ExtensionCo
 export default function pesapExtension(pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
     const paths = await ensureLearningStore(ctx.cwd);
-    setStatus(ctx, "pesap-agent ready");
-    notify(ctx, `Pesap learning store: ${paths.root}`, "info");
+    agentEnabled = getAgentEnabledFromSession(ctx);
+    setAgentEnabledState(ctx, agentEnabled);
+    notify(
+      ctx,
+      `Pesap learning store: ${paths.root} (${agentEnabled ? "active" : "paused"})`,
+      "info",
+    );
   });
 
   pi.on("before_agent_start", async (_event, ctx) => {
+    if (!agentEnabled) return;
     if (hasCustomMarker(ctx, BOOTSTRAP_MARKER)) return;
 
     const bootstrap = await getBootstrapPayload(ctx.cwd);
@@ -812,6 +848,34 @@ export default function pesapExtension(pi: ExtensionAPI): void {
     await completeWorkflowTracking(pi, ctx, workflow, text);
   });
 
+  pi.registerCommand("start-agent", {
+    description: "Enable pesap-agent workflows for this session",
+    handler: async (_args, ctx) => {
+      if (agentEnabled) {
+        notify(ctx, "pesap-agent is already active.", "info");
+        return;
+      }
+
+      setAgentEnabledState(ctx, true);
+      pi.appendEntry(AGENT_STATE_TYPE, { enabled: true, at: nowIso() });
+      notify(ctx, "pesap-agent activated.", "success");
+    },
+  });
+
+  pi.registerCommand("end-agent", {
+    description: "Pause pesap-agent workflows for this session",
+    handler: async (_args, ctx) => {
+      if (!agentEnabled) {
+        notify(ctx, "pesap-agent is already paused.", "info");
+        return;
+      }
+
+      pendingWorkflow = null;
+      setAgentEnabledState(ctx, false);
+      pi.appendEntry(AGENT_STATE_TYPE, { enabled: false, at: nowIso() });
+      notify(ctx, "pesap-agent paused. Run /start-agent to resume.", "success");
+    },
+  });
   pi.registerCommand("debug", {
     description: "Run the pesap debug workflow",
     handler: async (args, ctx) => {

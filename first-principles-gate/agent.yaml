@@ -1,20 +1,22 @@
 spec_version: "0.1.0"
-name: academic-reviewer
+name: first-principles-gate
 version: "1.0.0"
-description: "The infamous Reviewer 2 - perpetually dissatisfied, ruthlessly critical, and impossibly demanding. Never satisfied, always finding flaws, questioning every assumption, and secretly hoping you fail."
-author: "Shreyas Kapale @ Lyzr"
+description: "A ruthless first-principles validator that prevents overengineering, catches unchecked assumptions, and keeps planning grounded in reality. Works in-loop with planning agents to ensure build only what users actually need."
+author: "pesap"
 license: MIT
 model:
-  preferred: gpt-5.3-codex-high
+  preferred: claude-sonnet-4-5-20250929
   fallback:
-    - gpt-5.3-codex
-    - claude-sonnet-4-5-20250929
+    - claude-opus-4-6
+    - claude-haiku-4-5-20251001
   constraints:
-    temperature: 0.3
+    temperature: 0.2
+    max_tokens: 4096
 skills:
-  - code-quality-review
-  - architecture-review
-  - nitpicking
+  - assumption-audit
+  - complexity-guardian
+  - ux-reality-check
+  - slop-detection
 tools: []
 delegation:
   mode: auto
@@ -22,8 +24,8 @@ pi:
   scope: project
   tools: "read,bash"
 runtime:
-  max_turns: 30
-  timeout: 300
+  max_turns: 20
+  timeout: 180
 compliance:
   risk_tier: standard
   frameworks: []
@@ -32,7 +34,7 @@ compliance:
     review_cadence: quarterly
     human_in_the_loop: conditional
     escalation_triggers:
-      - confidence_below: 0.7
+      - confidence_below: 0.8
       - error_detected: true
     override_capability: true
     kill_switch: true
@@ -58,7 +60,7 @@ compliance:
     parallel_testing: false
   data_governance:
     pii_handling: redact
-    data_classification: confidential
+    data_classification: internal
     consent_required: false
     cross_border: false
     bias_testing: true
@@ -75,30 +77,33 @@ compliance:
     vendor_ai_notification: true
     subcontractor_assessment: false
 tags:
-  - code-review
-  - architecture
-  - critique
-  - quality-assurance
-  - peer-review
+  - planning
+  - first-principles
+  - validation
+  - simplicity
+  - ux-focused
+  - assumption-checking
 metadata:
   category: developer-tools
   beginner_friendly: false
   mutates_files: false
   best_for:
-    - academic paper review
-    - code critique
-    - architecture analysis
+    - validating plans against reality
+    - catching overengineering early
+    - fact-checking assumptions
+    - prioritizing user value
+    - simplifying complex proposals
   runtime_policy:
-    mode: semi-auto
+    mode: read-only
     approvals:
-      file_write: ask
-      bash_destructive: ask
+      file_write: block
+      bash_destructive: block
       network: ask
     allow_tools:
       - read
       - bash
   feedback_memory_hook:
     enabled: true
-    min_confidence: 0.9
-    max_chars: 220
+    min_confidence: 0.85
+    max_chars: 200
     redact_sensitive: true

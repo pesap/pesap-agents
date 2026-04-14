@@ -5,13 +5,13 @@ A Pi package for a single, self-learning development agent that can orchestrate 
 ## Install
 
 ```bash
-pi install https://github.com/pesap/pesap-agent
+pi install https://github.com/pesap/agents
 ```
 
 ## Try without installing
 
 ```bash
-pi -e git:github.com/pesap/pesap-agent
+pi -e https://github.com/pesap/agents
 ```
 
 ## Included commands

@@ -29,10 +29,15 @@ import {
 import { decideToolPolicy, formatPolicySummary, getRuntimePolicy } from "./policy.js";
 import { formatDoctorReport, runDoctor } from "./doctor.js";
 import { formatRecommendations, recommendAgents } from "./recommend.js";
+import {
+  decideSkillEnforcement,
+  formatSkillVerificationHookStatus,
+  SKILL_ENFORCEMENT_MAX_STREAK,
+  verifySkillSection,
+} from "./skill-verification.js";
 
 const MEMORY_DIR = getMemoryDir();
 const ARCHITECT_REF = "gh:shreyas-lyzr/architect";
-const SKILL_ENFORCEMENT_MAX_STREAK = 2;
 
 const USAGE = [
   "Usage:",
@@ -263,46 +268,6 @@ export default function piGitagent(pi: ExtensionAPI) {
     );
   }
 
-  function verifySkillSection(
-    agent: LoadedAgent,
-    assistantText: string,
-  ): { ok: boolean; reason: string; matchedSkills: string[] } {
-    if (agent.skills.length === 0) {
-      return { ok: true, reason: "no_skills", matchedSkills: [] };
-    }
-
-    const hasSkillsSection =
-      /(?:^|\n)#{1,6}\s*skills?\s*(?:used|applied|check|activation)\b/i.test(assistantText) ||
-      /skills?\s*(?:used|applied|check|activation)\s*:/i.test(assistantText);
-
-    if (!hasSkillsSection) {
-      return {
-        ok: false,
-        reason: "missing_skills_used_section",
-        matchedSkills: [],
-      };
-    }
-
-    const lower = assistantText.toLowerCase();
-    const matchedSkills = agent.skills
-      .filter((skill) => lower.includes(skill.name.toLowerCase()))
-      .map((skill) => skill.name);
-
-    const explicitlyNone =
-      /skills?\s*(?:used|applied|check|activation)[^\n]*none/i.test(assistantText) ||
-      /no\s+applicable\s+skill/i.test(assistantText);
-
-    if (matchedSkills.length === 0 && !explicitlyNone) {
-      return {
-        ok: false,
-        reason: "skills_section_without_known_skill_or_none",
-        matchedSkills: [],
-      };
-    }
-
-    return { ok: true, reason: "ok", matchedSkills };
-  }
-
   function auditSkillUsage(
     ctx: UiContext,
   ): { checked: boolean; result?: { ok: boolean; reason: string; matchedSkills: string[] } } {
@@ -333,17 +298,24 @@ export default function piGitagent(pi: ExtensionAPI) {
         "info",
       );
 
-      if (state.activeWorkflow) {
-        ctx.ui.notify("Skipping skill enforcement during an active gitagent workflow step.", "info");
+      const decision = decideSkillEnforcement({
+        verificationOk: result.ok,
+        activeWorkflow: Boolean(state.activeWorkflow),
+        currentStreak: state.skillEnforcementStreak,
+        maxStreak: SKILL_ENFORCEMENT_MAX_STREAK,
+      });
+
+      if (decision.action === "workflow_audit_only") {
+        ctx.ui.notify("Skipping skill enforcement follow-up during an active gitagent workflow step.", "info");
         return { checked: true, result };
       }
 
-      if (state.skillEnforcementStreak < SKILL_ENFORCEMENT_MAX_STREAK) {
-        state.skillEnforcementStreak += 1;
+      if (decision.action === "send_follow_up") {
+        state.skillEnforcementStreak = decision.nextStreak;
         const enforcementPrompt = [
           "Your previous response failed the skill verification hook.",
           "Please restate your answer and include a `Skills Used` section.",
-          "List at least one loaded skill by name with one-line evidence, or write `Skills Used: none` with a reason.",
+          "List at least one loaded skill by name inside that section and add one-line evidence for each skill, or write `Skills Used: none` with a reason.",
           "Do not change conclusions unless you found an actual error.",
         ].join(" ");
 
@@ -353,19 +325,32 @@ export default function piGitagent(pi: ExtensionAPI) {
           streak: state.skillEnforcementStreak,
           at: new Date().toISOString(),
         });
-        pi.sendUserMessage(enforcementPrompt, { deliverAs: "followUp" });
-        ctx.ui.notify(
-          `🧰 Skill hook enforcement queued (${state.skillEnforcementStreak}/${SKILL_ENFORCEMENT_MAX_STREAK}).`,
-          "info",
+        pi.sendMessage(
+          {
+            customType: "gitagent-skill-enforcement",
+            content: enforcementPrompt,
+            display: false,
+            details: {
+              agent: state.currentAgent.manifest.name,
+              reason: result.reason,
+              streak: state.skillEnforcementStreak,
+            },
+          },
+          { deliverAs: "followUp", triggerTurn: true },
         );
-      } else {
+      } else if (decision.action === "max_streak_reached") {
         ctx.ui.notify(
           `🛑 Skill hook reached max enforcement streak (${SKILL_ENFORCEMENT_MAX_STREAK}).`,
           "info",
         );
       }
     } else {
-      state.skillEnforcementStreak = 0;
+      state.skillEnforcementStreak = decideSkillEnforcement({
+        verificationOk: true,
+        activeWorkflow: Boolean(state.activeWorkflow),
+        currentStreak: state.skillEnforcementStreak,
+        maxStreak: SKILL_ENFORCEMENT_MAX_STREAK,
+      }).nextStreak;
     }
 
     return { checked: true, result };
@@ -609,10 +594,10 @@ export default function piGitagent(pi: ExtensionAPI) {
       memory_mode: agent.memoryIsLocal ? "local repo memory" : "centralized ~/.pi/gitagent memory",
       source: agent.dir,
       policy: formatPolicySummary(agent),
-      skill_verification_hook:
-        agent.skills.length > 0
-          ? `active (strict mode: auto follow-up enforcement, max streak ${SKILL_ENFORCEMENT_MAX_STREAK})`
-          : "inactive (no skills loaded)",
+      skill_verification_hook: formatSkillVerificationHookStatus(
+        agent.skills.length,
+        SKILL_ENFORCEMENT_MAX_STREAK,
+      ),
       feedback_memory_hook: feedbackCfg.enabled
         ? `active (min_confidence=${feedbackCfg.minConfidence}, max_chars=${feedbackCfg.maxChars}, redact_sensitive=${feedbackCfg.redactSensitive})`
         : "inactive (set metadata.feedback_memory_hook.enabled=false in agent.yaml to keep it off explicitly)",

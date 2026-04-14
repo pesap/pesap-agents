@@ -2,6 +2,7 @@ import { accessSync, constants, mkdirSync } from "node:fs";
 import type { LoadedAgent } from "./loader.js";
 import { ensureCacheDir } from "./paths.js";
 import { formatPolicySummary } from "./policy.js";
+import { formatSkillVerificationHookStatus } from "./skill-verification.js";
 
 export interface DoctorCheck {
   name: string;
@@ -127,10 +128,13 @@ export function runDoctor(
   pushCheck(checks, {
     name: "skills",
     status: agent.skills.length > 0 ? "pass" : "warn",
-    message:
-      agent.skills.length > 0
-        ? `${agent.skills.length} skills loaded`
-        : "no skills loaded, skill verification hook will stay inactive",
+    message: agent.skills.length > 0 ? `${agent.skills.length} skills loaded` : "no skills loaded",
+  });
+
+  pushCheck(checks, {
+    name: "skill-hook",
+    status: agent.skills.length > 0 ? "pass" : "warn",
+    message: formatSkillVerificationHookStatus(agent.skills.length),
   });
 
   const feedbackHook = agent.manifest.metadata?.feedback_memory_hook as

@@ -1,38 +1,40 @@
 ---
 name: skill-creator
-description: Create or improve reusable skills. Use when users want a new skill, stronger trigger behavior, or iterative improvements with clear validation.
+description: Create or improve reusable SKILL.md files with clear trigger behavior, safety boundaries, and lightweight validation. Use when users ask to build a new skill, upgrade an existing skill, tune "Use when/Avoid when" sections, or run /learn-skill.
 ---
 
-## Trigger conditions
-- User asks to create, update, optimize, or benchmark a skill.
-- User shares a workflow and asks to "turn this into a skill".
-- Existing skill under-triggers, over-triggers, or produces weak results.
-
 ## Use when
-- Goal and scope can be defined from user intent.
-- You can capture concrete input/output expectations.
-- Iteration is possible (draft, test, revise).
+- User wants a new reusable skill.
+- User wants to improve an existing SKILL.md.
+- User asks for better trigger behavior, safer boundaries, or clearer output format.
+- User runs `/learn-skill`.
 
 ## Avoid when
-- Request is one-off task automation, not reusable behavior.
-- User asks for malicious/deceptive capability.
-- Critical requirements remain ambiguous after clarification.
+- Task is not about skills (feature work, bugfixes, general coding).
+- User only wants one-off prompt help, not reusable skill logic.
+- Scope is intentionally fixed and no trigger/boundary updates are desired.
 
-## Instructions
-1. Capture intent first: what it does, when it should trigger, output shape, and success criteria.
-2. Interview for edge cases, constraints, dependencies, and examples before drafting.
-3. Draft `SKILL.md` with explicit trigger-rich description, compact safe instructions, and output contract.
-4. Propose 2-3 realistic test prompts for non-trivial skills, then revise from observed failures.
-5. Keep edits surgical and generalizable, avoid overfitting to one example.
-6. If confidence is low, stop and ask before finalizing.
+## Workflow
+1. **Scope**
+   - Capture intent, trigger, output format, and boundaries.
+   - Reuse conversation context first, ask clarifying questions only where ambiguous.
+2. **Interview**
+   - Clarify edge cases, constraints, dependencies, and safety limits.
+3. **Draft**
+   - Write or update `SKILL.md` with compact, general instructions.
+   - Include explicit `Use when` and `Avoid when` sections.
+4. **Validate**
+   - Check trigger quality, safety, brevity, and reusability (no overfitting).
+5. **Test plan**
+   - For non-trivial skills, propose 2-3 realistic test prompts.
+6. **Save**
+   - Write/update target files (or clearly mark dry-run output).
+7. **Learn**
+   - Persist concise notes about trigger choices and boundary decisions.
 
-## Safety defaults
-- Refuse malware, unauthorized access, exfiltration, or deceptive skill intent.
-- Do not claim validation you did not run.
-- Prefer minimal, reversible changes.
-
-## Output
-- Scope + trigger definition
-- New/updated skill file paths
-- Validation evidence (or why skipped)
-- Risks/follow-ups
+## Output format
+- Skill summary
+- Generated artifacts (paths + what changed)
+- Learnings
+- `Result: success|partial|failed`
+- `Confidence: 0..1`

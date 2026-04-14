@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: data-engineering
 ---
-
 # Exhaustive Data Validation
 
 ## When to Use
@@ -17,6 +16,7 @@ When the user needs robust validation beyond simple type checks — business rul
 ## Instructions
 
 ### Validation Layers
+
 Apply validation in this order:
 1. **Type coercion / rejection** — Pydantic's type system (strict mode recommended)
 2. **Field-level constraints** — `Field(ge=0, max_length=255)`, regex patterns

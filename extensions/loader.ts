@@ -114,9 +114,28 @@ function escapeRegExp(value: string): string {
 }
 
 function extractMarkdownSection(markdown: string, heading: string): string {
-  const regex = new RegExp(`^##\\s+${escapeRegExp(heading)}\\s*\\n([\\s\\S]*?)(?=\\n##\\s+|$)`, "m");
-  const match = markdown.match(regex);
-  return match ? match[1].trim() : "";
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const headingRegex = new RegExp(`^##\\s+${escapeRegExp(heading)}\\s*$`);
+
+  let start = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (headingRegex.test(lines[index]?.trim() ?? "")) {
+      start = index + 1;
+      break;
+    }
+  }
+
+  if (start === -1) return "";
+
+  let end = lines.length;
+  for (let index = start; index < lines.length; index += 1) {
+    if (/^##\s+/.test(lines[index] ?? "")) {
+      end = index;
+      break;
+    }
+  }
+
+  return lines.slice(start, end).join("\n").trim();
 }
 
 function parseSkillBody(raw: string): { whenToUse: string; instructionChecklist: string[] } {

@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: data-engineering
 ---
-
 # Pydantic v2 Data Modeling
 
 ## When to Use
@@ -17,6 +16,7 @@ When the user needs to create, refactor, or review Pydantic data models.
 ## Instructions
 
 ### Model Creation Workflow
+
 1. Ask about the domain entities and their relationships
 2. Identify field types, constraints, and optionality
 3. Build core models first (leaf nodes with no dependencies)

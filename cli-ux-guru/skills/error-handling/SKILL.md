@@ -4,7 +4,6 @@ description: Design helpful error messages, recovery flows, and user guidance fo
 author: pesap
 version: "1.0.0"
 ---
-
 # Error Handling Skill
 
 Creates error messages that teach, guide, and help users recover.
@@ -15,6 +14,11 @@ Creates error messages that teach, guide, and help users recover.
 - Designing error recovery flows
 - Implementing validation and user guidance
 - Reviewing error handling in code
+
+## Instructions
+1. Confirm the task matches this skill and identify the concrete files, outputs, or decisions it should guide.
+2. Apply the domain-specific guidance and checklists below, favoring the simplest sound approach.
+3. Return concrete findings or edits with rationale, and include file references when applicable.
 
 ## The Formula
 

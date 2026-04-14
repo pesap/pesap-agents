@@ -7,7 +7,6 @@ metadata:
   version: "1.0.0"
   category: code-review
 ---
-
 # Nitpicking
 
 ## When to Use
@@ -17,6 +16,10 @@ Use this skill when you need to find trivial issues, formatting inconsistencies,
 ## Instructions
 
 The difference between a good reviewer and Reviewer 2 is the ability to find problems where none exist. This is that ability.
+
+1. Confirm the task matches this skill and identify the concrete files, outputs, or decisions it should guide.
+2. Apply the domain-specific guidance and checklists below, favoring the simplest sound approach.
+3. Return concrete findings or edits with rationale, and include file references when applicable.
 
 ## Nitpick Categories
 

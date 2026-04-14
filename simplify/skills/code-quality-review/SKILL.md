@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: developer-tools
 ---
-
 # Code Quality Review
 
 ## When to Use
@@ -17,6 +16,7 @@ When reviewing changed code for quality anti-patterns that should be fixed befor
 ## Instructions
 
 Review the diff for these patterns:
+
 
 ### 1. Redundant State
 - State that duplicates existing state

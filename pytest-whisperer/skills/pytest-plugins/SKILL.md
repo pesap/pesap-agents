@@ -8,11 +8,15 @@ metadata:
   version: "1.0.0"
   category: testing
 ---
-
 # Pytest Plugins for Fixture Organization
 
 ## When to Use
 When fixture modules need explicit loading (especially with `--import-mode=importlib`), when a monorepo or workspace has multiple packages with shared fixture patterns, or when `conftest.py` files are bloated with `sys.path` hacks and star imports to discover fixture modules.
+
+## Instructions
+1. Confirm the task matches this skill and identify the concrete files, outputs, or decisions it should guide.
+2. Apply the domain-specific guidance and checklists below, favoring the simplest sound approach.
+3. Return concrete findings or edits with rationale, and include file references when applicable.
 
 ## The Pattern
 

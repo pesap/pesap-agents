@@ -12,6 +12,11 @@ export interface SkillEnforcementDecision {
   nextStreak: number;
 }
 
+export interface SkillAuditResult {
+  verification: SkillVerificationResult;
+  enforcement: SkillEnforcementDecision;
+}
+
 type SkillCarrier = { skills: Array<{ name: string }> };
 
 const SKILLS_HEADING_RE = /^\s*#{1,6}\s*skills?\s*(?:used|applied|check|activation)\b/i;
@@ -195,6 +200,24 @@ export function decideSkillEnforcement(params: {
   }
 
   return { action: "max_streak_reached", nextStreak: params.currentStreak };
+}
+
+export function auditSkillResponse(params: {
+  agent: SkillCarrier;
+  assistantText: string;
+  activeWorkflow: boolean;
+  currentStreak: number;
+  maxStreak?: number;
+}): SkillAuditResult {
+  const verification = verifySkillSection(params.agent, params.assistantText);
+  const enforcement = decideSkillEnforcement({
+    verificationOk: verification.ok,
+    activeWorkflow: params.activeWorkflow,
+    currentStreak: params.currentStreak,
+    maxStreak: params.maxStreak,
+  });
+
+  return { verification, enforcement };
 }
 
 export function formatSkillVerificationHookStatus(skillCount: number, maxStreak = SKILL_ENFORCEMENT_MAX_STREAK): string {

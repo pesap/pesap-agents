@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: developer-tools
 ---
-
 # Efficiency Review
 
 ## When to Use
@@ -17,6 +16,7 @@ When reviewing changed code for performance and resource efficiency issues.
 ## Instructions
 
 Review the diff for these patterns:
+
 
 ### 1. Unnecessary Work
 - Redundant computations (same value computed multiple times)

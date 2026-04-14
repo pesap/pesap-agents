@@ -8,8 +8,16 @@ metadata:
   version: "1.0.0"
   category: developer-tools
 ---
-
 # Type Safety and Source of Truth
+
+
+## When to Use
+Use this skill when you need to detect type drift, unnecessary widening/casting, duplicate type definitions, and trust-boundary violations.
+
+## Instructions
+1. Confirm the task matches this skill and identify the concrete files, outputs, or decisions it should guide.
+2. Apply the domain-specific guidance and checklists below, favoring the simplest sound approach.
+3. Return concrete findings or edits with rationale, and include file references when applicable.
 
 ## Review Goal
 Protect canonical types and trust boundaries while reducing runtime defensive churn in trusted internals.

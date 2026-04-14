@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: infrastructure-systems
 ---
-
 # Serialization & Migration
 
 ## When to Use
@@ -17,6 +16,7 @@ When the user needs to understand how infrasys serializes systems, debug deseria
 ## Instructions
 
 ### How Serialization Works
+
 
 `system.to_json("path/system.json")` produces:
 

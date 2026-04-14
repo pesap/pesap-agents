@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: infrastructure-systems
 ---
-
 # Component Modeling
 
 ## When to Use
@@ -17,6 +16,7 @@ When the user needs to design component hierarchies, understand composed compone
 ## Instructions
 
 ### Component Base Class
+
 
 Every entity in a System inherits from `Component`:
 

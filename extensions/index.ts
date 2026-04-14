@@ -30,10 +30,9 @@ import { decideToolPolicy, formatPolicySummary, getRuntimePolicy } from "./polic
 import { formatDoctorReport, runDoctor } from "./doctor.js";
 import { formatRecommendations, recommendAgents } from "./recommend.js";
 import {
-  decideSkillEnforcement,
+  auditSkillResponse,
   formatSkillVerificationHookStatus,
   SKILL_ENFORCEMENT_MAX_STREAK,
-  verifySkillSection,
 } from "./skill-verification.js";
 
 const MEMORY_DIR = getMemoryDir();
@@ -268,50 +267,51 @@ export default function piGitagent(pi: ExtensionAPI) {
     );
   }
 
-  function auditSkillUsage(
-    ctx: UiContext,
-  ): { checked: boolean; result?: { ok: boolean; reason: string; matchedSkills: string[] } } {
+  function auditSkillUsage(ctx: UiContext): void {
     if (!state.currentAgent || state.currentAgent.skills.length === 0) {
       state.skillEnforcementStreak = 0;
-      return { checked: false };
+      return;
     }
 
     const assistantText = getLastAssistantText(ctx);
-    if (!assistantText) return { checked: false };
+    if (!assistantText) return;
 
     const fingerprint = `${state.currentAgent.manifest.name}:${assistantText.slice(-160)}`;
-    if (fingerprint === state.lastSkillAuditFingerprint) return { checked: false };
+    if (fingerprint === state.lastSkillAuditFingerprint) return;
     state.lastSkillAuditFingerprint = fingerprint;
 
-    const result = verifySkillSection(state.currentAgent, assistantText);
+    const audit = auditSkillResponse({
+      agent: state.currentAgent,
+      assistantText,
+      activeWorkflow: Boolean(state.activeWorkflow),
+      currentStreak: state.skillEnforcementStreak,
+      maxStreak: SKILL_ENFORCEMENT_MAX_STREAK,
+    });
+    const { verification, enforcement } = audit;
+    state.skillEnforcementStreak = enforcement.nextStreak;
+
     pi.appendEntry("gitagent-skill-check", {
       agent: state.currentAgent.manifest.name,
-      ok: result.ok,
-      reason: result.reason,
-      matchedSkills: result.matchedSkills,
+      ok: verification.ok,
+      reason: verification.reason,
+      matchedSkills: verification.matchedSkills,
       at: new Date().toISOString(),
     });
 
-    if (!result.ok) {
-      ctx.ui.notify(
-        `⚠️ Skill hook: ${state.currentAgent.manifest.name} is missing a valid Skills Used section (${result.reason}).`,
-        "info",
-      );
+    if (verification.ok) return;
 
-      const decision = decideSkillEnforcement({
-        verificationOk: result.ok,
-        activeWorkflow: Boolean(state.activeWorkflow),
-        currentStreak: state.skillEnforcementStreak,
-        maxStreak: SKILL_ENFORCEMENT_MAX_STREAK,
-      });
+    ctx.ui.notify(
+      `⚠️ Skill hook: ${state.currentAgent.manifest.name} is missing a valid Skills Used section (${verification.reason}).`,
+      "info",
+    );
 
-      if (decision.action === "workflow_audit_only") {
+    switch (enforcement.action) {
+      case "workflow_audit_only": {
         ctx.ui.notify("Skipping skill enforcement follow-up during an active gitagent workflow step.", "info");
-        return { checked: true, result };
+        return;
       }
 
-      if (decision.action === "send_follow_up") {
-        state.skillEnforcementStreak = decision.nextStreak;
+      case "send_follow_up": {
         const enforcementPrompt = [
           "Your previous response failed the skill verification hook.",
           "Please restate your answer and include a `Skills Used` section.",
@@ -321,7 +321,7 @@ export default function piGitagent(pi: ExtensionAPI) {
 
         pi.appendEntry("gitagent-skill-enforcement", {
           agent: state.currentAgent.manifest.name,
-          reason: result.reason,
+          reason: verification.reason,
           streak: state.skillEnforcementStreak,
           at: new Date().toISOString(),
         });
@@ -332,28 +332,27 @@ export default function piGitagent(pi: ExtensionAPI) {
             display: false,
             details: {
               agent: state.currentAgent.manifest.name,
-              reason: result.reason,
+              reason: verification.reason,
               streak: state.skillEnforcementStreak,
             },
           },
           { deliverAs: "followUp", triggerTurn: true },
         );
-      } else if (decision.action === "max_streak_reached") {
+        return;
+      }
+
+      case "max_streak_reached": {
         ctx.ui.notify(
           `🛑 Skill hook reached max enforcement streak (${SKILL_ENFORCEMENT_MAX_STREAK}).`,
           "info",
         );
+        return;
       }
-    } else {
-      state.skillEnforcementStreak = decideSkillEnforcement({
-        verificationOk: true,
-        activeWorkflow: Boolean(state.activeWorkflow),
-        currentStreak: state.skillEnforcementStreak,
-        maxStreak: SKILL_ENFORCEMENT_MAX_STREAK,
-      }).nextStreak;
-    }
 
-    return { checked: true, result };
+      case "verified": {
+        return;
+      }
+    }
   }
 
   function resolveAndLoad(ref: string, cwd: string): LoadedAgent {

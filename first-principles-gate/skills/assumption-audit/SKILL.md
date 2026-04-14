@@ -7,7 +7,6 @@ metadata:
   version: "1.0.0"
   category: validation
 ---
-
 # Assumption Audit
 
 ## When to Use
@@ -20,6 +19,7 @@ metadata:
 ## Instructions
 
 ### Step 1: Extract All Assumptions
+
 
 Read through the plan and extract every statement that:
 - Predicts user behavior

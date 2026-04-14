@@ -4,7 +4,6 @@ description: Design configuration persistence, context management, and the balan
 author: pesap
 version: "1.0.0"
 ---
-
 # Memory Hierarchy Skill
 
 Manages what the CLI remembers vs. what it asks, balancing convenience with explicit control.
@@ -24,6 +23,11 @@ Lower numbers win. Always.
 - Deciding what to persist vs. ask
 - Planning configuration file locations
 - Managing context and defaults
+
+## Instructions
+1. Confirm the task matches this skill and identify the concrete files, outputs, or decisions it should guide.
+2. Apply the domain-specific guidance and checklists below, favoring the simplest sound approach.
+3. Return concrete findings or edits with rationale, and include file references when applicable.
 
 ## Configuration Layers
 

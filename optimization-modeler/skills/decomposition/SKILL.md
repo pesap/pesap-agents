@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: data-engineering
 ---
-
 # Problem Decomposition
 
 ## When to Use
@@ -17,6 +16,7 @@ When the user has a large optimization problem that is too slow to solve monolit
 ## Instructions
 
 ### Identifying Decomposable Structure
+
 
 Before choosing a method, analyze the constraint matrix structure:
 

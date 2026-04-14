@@ -7,7 +7,6 @@ metadata:
   version: "1.0.0"
   category: validation
 ---
-
 # Complexity Guardian
 
 ## When to Use
@@ -21,6 +20,7 @@ metadata:
 ## Instructions
 
 ### Step 1: Identify the Core Problem
+
 
 Before evaluating complexity, state the core problem in one sentence:
 ```

@@ -8,8 +8,16 @@ metadata:
   version: "1.0.0"
   category: developer-tools
 ---
-
 # Synthesis and Apply
+
+
+## When to Use
+Use this skill when you need to merge multi-reviewer findings into a balanced decision report and apply only high-confidence, in-scope fixes.
+
+## Instructions
+1. Confirm the task matches this skill and identify the concrete files, outputs, or decisions it should guide.
+2. Apply the domain-specific guidance and checklists below, favoring the simplest sound approach.
+3. Return concrete findings or edits with rationale, and include file references when applicable.
 
 ## Goal
 Turn multiple review streams into one practical plan, then apply only the highest-value fixes that keep scope tight.

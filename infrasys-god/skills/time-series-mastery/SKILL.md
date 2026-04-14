@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: infrastructure-systems
 ---
-
 # Time Series Mastery
 
 ## When to Use
@@ -17,6 +16,10 @@ When the user needs to create, attach, query, slice, or manage time series data 
 ## Instructions
 
 ### Time Series Types
+
+1. Confirm the task matches this skill and identify the concrete files, outputs, or decisions it should guide.
+2. Apply the domain-specific guidance and checklists below, favoring the simplest sound approach.
+3. Return concrete findings or edits with rationale, and include file references when applicable.
 
 infrasys provides three time series types:
 

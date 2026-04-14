@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: documentation
 ---
-
 # GitHub Elements
 
 ## When to Use
@@ -18,6 +17,7 @@ Any time you are writing or reviewing a README or markdown file that will be ren
 ## Instructions
 
 Apply the following GitHub-specific markdown extensions to produce professional, well-structured documentation.
+
 
 ### Alerts (Annotations)
 

@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: data-engineering
 ---
-
 # infrasys Integration
 
 ## When to Use
@@ -17,6 +16,7 @@ When the user needs to model infrastructure system components, manage time serie
 ## Instructions
 
 ### Core Concepts
+
 
 **InfrastructureSystemsComponent:**
 The base class for all system components in infrasys. Extends Pydantic BaseModel with component management features.

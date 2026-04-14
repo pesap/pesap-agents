@@ -8,11 +8,15 @@ metadata:
   version: "1.0.0"
   category: developer-tools
 ---
-
 # Python dslop
 
 ## When to Use
 Use when changed files are primarily Python (`.py`, `pyproject.toml`, `tests/`) and you need a narrow pre-commit cleanup pass.
+
+## Instructions
+1. Confirm the task matches this skill and identify the concrete files, outputs, or decisions it should guide.
+2. Apply the domain-specific guidance and checklists below, favoring the simplest sound approach.
+3. Return concrete findings or edits with rationale, and include file references when applicable.
 
 ## Goals
 - Preserve behavior while tightening readability and type safety

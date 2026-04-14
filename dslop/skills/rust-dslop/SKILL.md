@@ -8,11 +8,15 @@ metadata:
   version: "1.0.0"
   category: developer-tools
 ---
-
 # Rust dslop
 
 ## When to Use
 Use when changed files are primarily Rust (`.rs`, `Cargo.toml`, workspace crates) and you need a pre-commit cleanup pass.
+
+## Instructions
+1. Confirm the task matches this skill and identify the concrete files, outputs, or decisions it should guide.
+2. Apply the domain-specific guidance and checklists below, favoring the simplest sound approach.
+3. Return concrete findings or edits with rationale, and include file references when applicable.
 
 ## Goals
 - Preserve behavior, improve type clarity, and reduce complexity

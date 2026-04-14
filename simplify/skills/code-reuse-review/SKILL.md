@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: developer-tools
 ---
-
 # Code Reuse Review
 
 ## When to Use
@@ -17,6 +16,7 @@ When reviewing changed code for opportunities to reuse existing codebase utiliti
 ## Instructions
 
 For each change in the diff:
+
 
 ### 1. Search for Existing Utilities
 - Look for similar patterns elsewhere in the codebase

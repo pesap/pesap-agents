@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: testing
 ---
-
 # CI Benchmarks
 
 ## When to Use
@@ -25,6 +24,7 @@ Together they give you: benchmark on every push, charts over time, alert comment
 ## Instructions
 
 ### Part 1: Writing Benchmarks with pytest-benchmark
+
 
 1. **Install pytest-benchmark**:
 

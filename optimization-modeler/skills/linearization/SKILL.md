@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: data-engineering
 ---
-
 # Linearization Techniques
 
 ## When to Use
@@ -17,6 +16,7 @@ When the user has nonlinear terms in their optimization model and needs a linear
 ## Instructions
 
 ### Decision Tree: Which Technique to Use
+
 
 ```
 Nonlinear term identified

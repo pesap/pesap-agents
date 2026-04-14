@@ -7,7 +7,6 @@ metadata:
   version: "1.0.0"
   category: validation
 ---
-
 # Slop Detection
 
 ## When to Use
@@ -34,6 +33,7 @@ Common forms:
 ## Instructions
 
 ### Step 1: Scan for Hallucination Markers
+
 
 Check for these telltale signs of made-up content:
 

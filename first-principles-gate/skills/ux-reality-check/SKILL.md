@@ -7,7 +7,6 @@ metadata:
   version: "1.0.0"
   category: validation
 ---
-
 # UX Reality Check
 
 ## When to Use
@@ -21,6 +20,7 @@ metadata:
 ## Instructions
 
 ### Step 1: Identify the User (Actually)
+
 
 Don't accept "the user" — demand specificity:
 

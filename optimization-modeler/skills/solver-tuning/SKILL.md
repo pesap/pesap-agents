@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: data-engineering
 ---
-
 # Solver Tuning & Diagnostics
 
 ## When to Use
@@ -17,6 +16,7 @@ When the user's model solves too slowly, produces unexpected results, or has num
 ## Instructions
 
 ### Solver Log Interpretation
+
 
 Key metrics to extract from any solver log:
 - **Presolve reductions**: variables/constraints removed — if low, the formulation may have redundancy

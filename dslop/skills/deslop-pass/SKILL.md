@@ -8,11 +8,15 @@ metadata:
   version: "1.0.0"
   category: developer-tools
 ---
-
 # Deslop Pass
 
 ## When to Use
 Use when implementation is functionally done and you want a final pre-commit quality pass that removes avoidable slop without widening scope.
+
+## Instructions
+1. Confirm the task matches this skill and identify the concrete files, outputs, or decisions it should guide.
+2. Apply the domain-specific guidance and checklists below, favoring the simplest sound approach.
+3. Return concrete findings or edits with rationale, and include file references when applicable.
 
 ## Required 3 Review Vectors (Parallel)
 Launch exactly these 3 vectors in parallel with the same context bundle:

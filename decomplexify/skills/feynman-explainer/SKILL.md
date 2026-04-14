@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: education
 ---
-
 # Feynman Technique Explainer
 
 ## When to Use
@@ -17,6 +16,7 @@ After first-principles breakdown, or whenever a concept needs to be explained in
 ## Instructions
 
 Follow Richard Feynman's method — if you can't explain it simply, you don't understand it well enough.
+
 
 1. **Start from zero** — Pretend the listener is a curious 12-year-old who has never encountered any of these ideas. No jargon. No "as you probably know." No assumed background
 2. **Use everyday analogies** — Connect the concept to things from daily life:

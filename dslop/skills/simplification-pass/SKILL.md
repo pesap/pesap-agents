@@ -8,8 +8,16 @@ metadata:
   version: "1.0.0"
   category: developer-tools
 ---
-
 # Simplification Pass
+
+
+## When to Use
+Use this skill when you need to find and remove overengineering, dead code, and low-payoff abstraction while preserving behavior.
+
+## Instructions
+1. Confirm the task matches this skill and identify the concrete files, outputs, or decisions it should guide.
+2. Apply the domain-specific guidance and checklists below, favoring the simplest sound approach.
+3. Return concrete findings or edits with rationale, and include file references when applicable.
 
 ## Review Goal
 Reduce complexity tax without changing behavior or widening scope.

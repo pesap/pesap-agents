@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import {
+  auditSkillResponse,
   decideSkillEnforcement,
   extractSkillsSection,
   formatSkillVerificationHookStatus,
@@ -127,6 +128,20 @@ test("decideSkillEnforcement resets streak after a verified response", () => {
   });
 
   assert.deepEqual(decision, { action: "verified", nextStreak: 0 });
+});
+
+test("auditSkillResponse keeps verification and enforcement in one result", () => {
+  const result = auditSkillResponse({
+    agent,
+    assistantText: ["Done.", "", "Skills Used: cli-design"].join("\n"),
+    activeWorkflow: false,
+    currentStreak: 1,
+    maxStreak: 2,
+  });
+
+  assert.equal(result.verification.ok, false);
+  assert.equal(result.verification.reason, "skill_evidence_missing");
+  assert.deepEqual(result.enforcement, { action: "send_follow_up", nextStreak: 2 });
 });
 
 test("formatSkillVerificationHookStatus describes workflow audit-only mode", () => {

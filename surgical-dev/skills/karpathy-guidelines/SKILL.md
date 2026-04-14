@@ -7,7 +7,6 @@ metadata:
   version: "1.0.0"
   category: code-quality
 ---
-
 # Karpathy Guidelines
 
 Behavioral guidelines to reduce common LLM coding mistakes, derived from [Andrej Karpathy's observations](https://x.com/karpathy/status/2015883857489522876) on LLM coding pitfalls.
@@ -82,6 +81,7 @@ Use these guidelines when:
 ## Instructions
 
 Apply these four principles to every coding task:
+
 
 1. **Before coding** — State assumptions, present interpretations, ask if unclear
 2. **During implementation** — Keep it simple, resist speculative features

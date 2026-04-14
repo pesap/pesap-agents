@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: data-engineering
 ---
-
 # Problem Simplification
 
 ## When to Use
@@ -17,6 +16,7 @@ When the user has an optimization model that is too large, too slow, or more com
 ## Instructions
 
 ### Simplification Checklist
+
 Work through these in order on every formulation:
 
 1. **Variable Fixing** — Can any variables be determined from the data without solving?

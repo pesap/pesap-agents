@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: infrastructure-systems
 ---
-
 # System Design
 
 ## When to Use
@@ -17,6 +16,7 @@ When the user needs to create a custom System class, manage component lifecycles
 ## Instructions
 
 ### The System Class
+
 
 `System` is the root container. It owns components, time series, supplemental attributes, and the SQLite metadata store.
 

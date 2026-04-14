@@ -8,7 +8,6 @@ metadata:
   version: "1.0.0"
   category: infrastructure-systems
 ---
-
 # Storage Backends
 
 ## When to Use
@@ -17,6 +16,7 @@ When the user needs to choose a storage backend for time series, configure stora
 ## Instructions
 
 ### Backend Overview
+
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐

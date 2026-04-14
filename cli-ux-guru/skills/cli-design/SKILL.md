@@ -4,7 +4,6 @@ description: Core CLI interface design patterns, command structure, and user int
 author: pesap
 version: "1.0.0"
 ---
-
 # CLI Design Skill
 
 Designs command-line interfaces optimized for clarity, efficiency, and user understanding.
@@ -15,6 +14,11 @@ Designs command-line interfaces optimized for clarity, efficiency, and user unde
 - Refactoring existing CLI structure
 - Designing argument and flag schemes
 - Planning command hierarchies (noun-verb vs verb-noun)
+
+## Instructions
+1. Confirm the task matches this skill and identify the concrete files, outputs, or decisions it should guide.
+2. Apply the domain-specific guidance and checklists below, favoring the simplest sound approach.
+3. Return concrete findings or edits with rationale, and include file references when applicable.
 
 ## Capabilities
 

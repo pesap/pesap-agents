@@ -1,5 +1,0 @@
-documents:
-  - path: owasp-top-10.md
-    always_load: true
-  - path: secure-coding-patterns.md
-    always_load: false

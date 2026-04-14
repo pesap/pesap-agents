@@ -1,5 +1,0 @@
-documents:
-  - path: review-template.md
-    always_load: true
-  - path: common-critiques.md
-    always_load: true

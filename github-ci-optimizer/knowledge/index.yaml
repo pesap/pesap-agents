@@ -1,5 +1,0 @@
-documents:
-  - path: github-actions-reference.md
-    always_load: true
-  - path: caching-patterns.md
-    always_load: true

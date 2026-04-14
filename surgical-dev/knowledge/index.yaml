@@ -1,5 +1,0 @@
-documents:
-  - path: common-mistakes.md
-    always_load: true
-  - path: before-after-examples.md
-    always_load: false

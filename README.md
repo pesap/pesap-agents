@@ -2,7 +2,7 @@
 
 A collection of gitagent-compatible agents, plus **pi-gitagent**, a [pi](https://github.com/badlogic/pi-mono) extension that lets you install, load, run, and chain agents inside a pi session.
 
-Current repo contents: **15 agents**, **61 skills**, **24 knowledge files**, **1 pi extension**.
+Current repo contents: **7 agents**, **63 skills**, **24 knowledge files**, **1 pi extension**.
 
 ## Bundled agents
 
@@ -10,21 +10,13 @@ All bundled agents support persistent memory. Auto feedback learning is on by de
 
 | Agent | Best for |
 |---|---|
-| [academic-reviewer](./academic-reviewer) | Harsh architecture and code critique |
-| [cli-ux-guru](./cli-ux-guru) | CLI UX, output, and error-message design |
-| [code-reviewer](./code-reviewer) | Bugs, security, performance, and code review |
-| [data-modeler](./data-modeler) | Pydantic and infrasys data modeling |
-| [decomplexify](./decomplexify) | First-principles explanations |
-| [dslop](./dslop) | Multi-agent review-readiness pass |
-| [first-principles-gate](./first-principles-gate) | Blocking overengineering and weak assumptions |
-| [github-ci-optimizer](./github-ci-optimizer) | Faster, cheaper GitHub Actions CI |
-| [infrasys-god](./infrasys-god) | Deep infrasys modeling and migrations |
-| [optimization-modeler](./optimization-modeler) | Optimization formulations and solver tuning |
-| [performance-freak](./performance-freak) | Speed and memory optimization |
-| [pytest-whisperer](./pytest-whisperer) | Pytest suites and test organization |
-| [readme-maestro](./readme-maestro) | README and documentation writing |
-| [simplify](./simplify) | Reuse, quality, and efficiency cleanup |
-| [surgical-dev](./surgical-dev) | Small, disciplined, verified code changes |
+| [plan-agent](./plan-agent) | First-principles planning, assumption audits, decomposition |
+| [dev-agent](./dev-agent) | Implementation, refactors, Pydantic/infrasys coding |
+| [qaqc-agent](./qaqc-agent) | Testing, regression hardening, pytest quality workflows |
+| [review-agent](./review-agent) | Code + security review and review-readiness synthesis |
+| [opt-agent](./opt-agent) | Runtime/solver/CI optimization |
+| [doc-agent](./doc-agent) | CLI UX writing and README/documentation quality |
+| [lit-agent](./lit-agent) | Literature scans and evidence synthesis |
 
 ## Install
 
@@ -41,8 +33,8 @@ That adds `/gitagent` to your pi sessions.
 /gitagent install .
 
 # Install one remote agent, then load it later by name
-/gitagent install gh:pesap/agents/code-reviewer
-/gitagent load code-reviewer
+/gitagent install gh:pesap/agents/review-agent
+/gitagent load review-agent
 
 # Install every agent from a remote multi-agent repo
 /gitagent install gh:pesap/agents
@@ -50,25 +42,37 @@ That adds `/gitagent` to your pi sessions.
 /gitagent installed
 
 # Load directly from a local path or GitHub ref
-/gitagent load simplify
-/gitagent load gh:pesap/agents/simplify
-/gitagent load https://github.com/pesap/agents/tree/main/simplify
+/gitagent load dev-agent
+/gitagent load gh:pesap/agents/dev-agent
+/gitagent load https://github.com/pesap/agents/tree/main/dev-agent
 
 # Run one agent without replacing your current loaded agent
-/gitagent run simplify -- review this diff for duplication and complexity
+/gitagent run review-agent -- review this diff for risks and quality issues
 
 # Chain agents in sequence
-/gitagent chain simplify academic-reviewer surgical-dev -- review this diff, refine findings, then implement the fix
+/gitagent chain plan-agent dev-agent qaqc-agent review-agent -- plan, implement, test, and review this change
 
 # Create a new agent via architect
 /gitagent new "a code reviewer specialized in Rust unsafe blocks"
 
 # Remove one installed alias, or wipe the registry
-/gitagent remove code-reviewer
+/gitagent remove review-agent
 /gitagent remove all
 ```
 
 Loaded agents persist across restarts of the same pi session file.
+
+## Consolidation map
+
+Legacy specialists were grouped by deployment skill to reduce typing and orchestration overhead:
+
+- `dev-agent` absorbs: `simplify`, `surgical-dev`, `data-modeler`, `infrasys-god`
+- `plan-agent` absorbs: `first-principles-gate`, `decomplexify`
+- `qaqc-agent` absorbs: `pytest-whisperer`
+- `review-agent` absorbs: `code-reviewer`, `academic-reviewer`, `dslop`
+- `opt-agent` absorbs: `performance-freak`, `optimization-modeler`, `github-ci-optimizer`
+- `doc-agent` absorbs: `cli-ux-guru`, `readme-maestro`
+- `lit-agent` is a dedicated literature and evidence workflow agent
 
 ## What pi-gitagent does
 

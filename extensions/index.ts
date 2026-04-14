@@ -940,7 +940,7 @@ export default function piGitagent(pi: ExtensionAPI) {
     parameters: Type.Object({
       ref: Type.String({
         description:
-          "Agent reference: installed alias (code-reviewer), local path, gh: shorthand (gh:owner/repo/agent), or full GitHub URL",
+          "Agent reference: installed alias (review-agent), local path, gh: shorthand (gh:owner/repo/agent), or full GitHub URL",
       }),
       followUp: Type.Optional(
         Type.String({

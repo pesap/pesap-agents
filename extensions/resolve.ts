@@ -3,9 +3,9 @@
  *
  * Resolves a gitagent agent from:
  *   - Installed registry entry: ~/.pi/gitagent/installed.json
- *   - Local directory:          ./code-reviewer, /abs/path/to/agent
- *   - GitHub shorthand:         gh:pesap/agents/code-reviewer
- *   - GitHub URL:               https://github.com/pesap/agents/tree/main/code-reviewer
+ *   - Local directory:          ./review-agent, /abs/path/to/agent
+ *   - GitHub shorthand:         gh:pesap/agents/review-agent
+ *   - GitHub URL:               https://github.com/pesap/agents/tree/main/review-agent
  *   - Git SSH:                  git@github.com:pesap/agents.git
  *
  * GitHub repos are shallow-cloned to ~/.pi/gitagent/cache/github/<owner>/<repo>/<branch>

@@ -1,5 +1,0 @@
-documents:
-  - path: markdown-style-guide.md
-    always_load: true
-  - path: github-markdown-extensions.md
-    always_load: true

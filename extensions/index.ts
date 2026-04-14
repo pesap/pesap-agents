@@ -6,11 +6,17 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { resolveAgent, resolveDir, listAgentsInDir } from "./resolve.js";
+import { resolveAgent, resolveDir, listAgentsInDir, parseGitHubRef, resolveExistingLocalPath } from "./resolve.js";
 import { loadAgent, mapModel, type LoadedAgent } from "./loader.js";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+import {
+  getRegistryPath,
+  readInstalledAgents,
+  upsertInstalledAgents,
+  type InstalledAgentRecord,
+} from "./registry.js";
+import { ensureMemoryDir, getMemoryDir } from "./paths.js";
 import { createRuntimeState, type PendingRestore, type WorkflowMode } from "./state.js";
 import {
   appendToMemory,
@@ -24,17 +30,19 @@ import { decideToolPolicy, formatPolicySummary, getRuntimePolicy } from "./polic
 import { formatDoctorReport, runDoctor } from "./doctor.js";
 import { formatRecommendations, recommendAgents } from "./recommend.js";
 
-const MEMORY_DIR = join(homedir(), ".pitagent", "memory");
+const MEMORY_DIR = getMemoryDir();
 const ARCHITECT_REF = "gh:shreyas-lyzr/architect";
 const SKILL_ENFORCEMENT_MAX_STREAK = 2;
 
 const USAGE = [
   "Usage:",
+  "  /gitagent install <ref>             Install one agent or every agent in a repo/path",
+  "  /gitagent installed                 List installed agents",
   "  /gitagent load <ref>                Load an agent into this session",
   "  /gitagent run <ref> -- <task>       Run one agent without changing the saved session agent",
   "  /gitagent chain <a> <b> -- <task>   Run agents sequentially, passing output forward",
   "  /gitagent new <prompt>              Create a new agent via the architect",
-  "  /gitagent list [ref]                List available agents",
+  "  /gitagent list [ref]                List available agents in a repo/path",
   "  /gitagent recommend <task>          Recommend the best agent for a task",
   "  /gitagent doctor [ref]              Run diagnostics on the current or target agent",
   "  /gitagent policy [ref]              Show runtime policy for the loaded or target agent",
@@ -99,7 +107,7 @@ export default function piGitagent(pi: ExtensionAPI) {
         : 220;
 
     return {
-      enabled: raw?.enabled === true,
+      enabled: raw?.enabled !== false,
       minConfidence,
       maxChars,
       redactSensitive: raw?.redact_sensitive !== false,
@@ -365,7 +373,7 @@ export default function piGitagent(pi: ExtensionAPI) {
 
   function resolveAndLoad(ref: string, cwd: string): LoadedAgent {
     const resolved = resolveAgent(ref, { cwd });
-    const opts = resolved.remote ? { memoryBaseDir: MEMORY_DIR } : {};
+    const opts = resolved.remote ? { memoryBaseDir: ensureMemoryDir() } : {};
     return loadAgent(resolved.dir, opts);
   }
 
@@ -444,6 +452,132 @@ export default function piGitagent(pi: ExtensionAPI) {
       : `Available agents:\n${agents.map((agent) => `  ${agent}`).join("\n")}`;
   }
 
+  function formatInstalledAgentsText(installed: InstalledAgentRecord[]): string {
+    if (installed.length === 0) {
+      return [
+        "No installed agents.",
+        `Install one with /gitagent install <local-path|gh:owner/repo[/agent]|https://github.com/...>.`,
+      ].join("\n");
+    }
+
+    return [
+      `Installed agents (${installed.length}):`,
+      ...installed.map((agent) => {
+        const source = agent.source === "local" ? "local/editable" : "remote/cached";
+        return `  ${agent.name}  [${source}]  ${agent.dir}`;
+      }),
+      `Registry: ${getRegistryPath()}`,
+    ].join("\n");
+  }
+
+  function discoverInstallableAgentDirs(dir: string): string[] {
+    const agents = listAgentsInDir(dir).map((name) => join(dir, name));
+    if (existsSync(join(dir, "agent.yaml"))) {
+      agents.unshift(dir);
+    }
+    return agents;
+  }
+
+  function buildInstallRecords(ref: string, cwd: string): InstalledAgentRecord[] {
+    const localDir = resolveExistingLocalPath(ref, cwd, false);
+    const remoteSpec = localDir ? null : parseGitHubRef(ref);
+    const targetDir = localDir ?? resolveDir(ref, { cwd });
+    const repoDir = remoteSpec
+      ? remoteSpec.subpath
+        ? resolve(
+            targetDir,
+            ...remoteSpec.subpath
+              .split("/")
+              .filter(Boolean)
+              .map(() => ".."),
+          )
+        : targetDir
+      : undefined;
+    const agentDirs = discoverInstallableAgentDirs(targetDir);
+
+    if (agentDirs.length === 0) {
+      throw new Error(`No installable agents found in ${targetDir}.`);
+    }
+
+    const installedAt = new Date().toISOString();
+
+    return agentDirs.map((agentDir) => {
+      const agent = loadAgent(agentDir, {
+        memoryBaseDir: remoteSpec ? MEMORY_DIR : undefined,
+        createMemoryDir: false,
+      });
+      return {
+        name: agent.manifest.name,
+        dir: agentDir,
+        source: remoteSpec ? "remote" : "local",
+        editable: !remoteSpec,
+        ref,
+        installedAt,
+        repoUrl: remoteSpec?.repoUrl,
+        branch: remoteSpec?.branch,
+        repoDir,
+      };
+    });
+  }
+
+  function findInstallConflicts(records: InstalledAgentRecord[]): Array<{
+    incoming: InstalledAgentRecord;
+    existing: InstalledAgentRecord;
+  }> {
+    const existingByName = new Map(readInstalledAgents().map((record) => [record.name, record]));
+    return records.flatMap((record) => {
+      const existing = existingByName.get(record.name);
+      if (!existing) return [];
+      const sameInstall =
+        existing.dir === record.dir &&
+        existing.source === record.source &&
+        existing.ref === record.ref &&
+        existing.repoUrl === record.repoUrl &&
+        existing.branch === record.branch;
+      return sameInstall ? [] : [{ incoming: record, existing }];
+    });
+  }
+
+  function handleInstalledList(ctx: { ui: { notify: (msg: string, type: string) => void } }) {
+    ctx.ui.notify(formatInstalledAgentsText(readInstalledAgents()), "info");
+  }
+
+  function handleInstall(
+    ctx: { ui: { notify: (msg: string, type: string) => void }; cwd: string },
+    ref: string,
+  ) {
+    try {
+      const records = buildInstallRecords(ref, ctx.cwd);
+      const conflicts = findInstallConflicts(records);
+      if (conflicts.length > 0) {
+        throw new Error(
+          [
+            "Install would overwrite existing installed agent names.",
+            ...conflicts.map(
+              ({ incoming, existing }) =>
+                `  ${incoming.name}: existing ${existing.ref} (${existing.dir}) conflicts with ${incoming.ref} (${incoming.dir})`,
+            ),
+            "Use a unique manifest name or load by explicit path/ref instead.",
+          ].join("\n"),
+        );
+      }
+      upsertInstalledAgents(records);
+      ctx.ui.notify(
+        [
+          `Installed ${records.length} agent${records.length === 1 ? "" : "s"} from ${ref}.`,
+          ...records.map((record) => {
+            const mode = record.source === "local" ? "editable local path" : "cached remote copy";
+            return `  ${record.name} -> ${record.dir} (${mode})`;
+          }),
+          `Registry updated: ${getRegistryPath()}`,
+        ].join("\n"),
+        "info",
+      );
+    } catch (error) {
+      ctx.ui.notify(`Install failed: ${(error as Error).message}`, "error");
+    }
+  }
+
   function unloadActiveAgent(
     ctx: { ui: { setStatus: (key: string, text: string | undefined) => void } },
     persist = true,
@@ -472,7 +606,7 @@ export default function piGitagent(pi: ExtensionAPI) {
       model: agent.manifest.model?.preferred ?? "default",
       skills: agent.skills.map((s) => s.name),
       memory: agent.memory ? "has content" : "empty",
-      memory_mode: agent.memoryIsLocal ? "local repo memory" : "centralized ~/.pitagent memory",
+      memory_mode: agent.memoryIsLocal ? "local repo memory" : "centralized ~/.pi/gitagent memory",
       source: agent.dir,
       policy: formatPolicySummary(agent),
       skill_verification_hook:
@@ -481,7 +615,7 @@ export default function piGitagent(pi: ExtensionAPI) {
           : "inactive (no skills loaded)",
       feedback_memory_hook: feedbackCfg.enabled
         ? `active (min_confidence=${feedbackCfg.minConfidence}, max_chars=${feedbackCfg.maxChars}, redact_sensitive=${feedbackCfg.redactSensitive})`
-        : "inactive (set metadata.feedback_memory_hook.enabled=true in agent.yaml)",
+        : "inactive (set metadata.feedback_memory_hook.enabled=false in agent.yaml to keep it off explicitly)",
     };
   }
 
@@ -731,7 +865,7 @@ export default function piGitagent(pi: ExtensionAPI) {
     description:
       "Load a gitagent agent into the session. The agent's identity, rules, and skills are injected into the system prompt on the next turn. Use followUp to queue a task that runs with the agent's context active.",
     promptSnippet:
-      "Load a gitagent agent (local path, gh:owner/repo/agent, or full GitHub URL). Use followUp to queue work that runs under the agent's identity.",
+      "Load a gitagent agent (installed alias, local path, gh:owner/repo/agent, or full GitHub URL). Use followUp to queue work that runs under the agent's identity.",
     promptGuidelines: [
       "When the user asks to 'load agent X and do Y', call gitagent_load with ref=X and followUp=Y so Y runs with the agent's context.",
       "When the user just says 'load agent X', call gitagent_load with ref=X and no followUp.",
@@ -739,7 +873,7 @@ export default function piGitagent(pi: ExtensionAPI) {
     parameters: Type.Object({
       ref: Type.String({
         description:
-          "Agent reference: local name (code-reviewer), gh: shorthand (gh:owner/repo/agent), or full GitHub URL",
+          "Agent reference: installed alias (code-reviewer), local path, gh: shorthand (gh:owner/repo/agent), or full GitHub URL",
       }),
       followUp: Type.Optional(
         Type.String({
@@ -869,6 +1003,69 @@ export default function piGitagent(pi: ExtensionAPI) {
   });
 
   unsafePi.registerTool({
+    name: "gitagent_install",
+    label: "Install Agents",
+    description:
+      "Install one gitagent agent, or every agent in a local directory or GitHub repo, into the local registry so it can be loaded later by name.",
+    promptSnippet:
+      "Install a gitagent from a local path or GitHub reference. Local installs stay editable, remote installs are cached under ~/.pi/gitagent/cache/github/.",
+    parameters: Type.Object({
+      ref: Type.String({
+        description:
+          "Local path, installed alias, gh:owner/repo[/agent], or full GitHub URL to install from.",
+      }),
+    }),
+    async execute(
+      _toolCallId: string,
+      params: { ref: string },
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      ctx: UiContext,
+    ) {
+      try {
+        const records = buildInstallRecords(params.ref, ctx.cwd);
+        const conflicts = findInstallConflicts(records);
+        if (conflicts.length > 0) {
+          throw new Error(
+            [
+              "Install would overwrite existing installed agent names.",
+              ...conflicts.map(
+                ({ incoming, existing }) =>
+                  `  ${incoming.name}: existing ${existing.ref} (${existing.dir}) conflicts with ${incoming.ref} (${incoming.dir})`,
+              ),
+              "Use a unique manifest name or load by explicit path/ref instead.",
+            ].join("\n"),
+          );
+        }
+        upsertInstalledAgents(records);
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                `Installed ${records.length} agent${records.length === 1 ? "" : "s"} from ${params.ref}.`,
+                ...records.map((record) => `  ${record.name} -> ${record.dir}`),
+              ].join("\n"),
+            },
+          ],
+          details: {
+            ref: params.ref,
+            registry: getRegistryPath(),
+            agents: records.map((record) => ({
+              name: record.name,
+              dir: record.dir,
+              source: record.source,
+              editable: record.editable,
+            })),
+          },
+        };
+      } catch (error) {
+        throw new Error(`Failed to install agents from "${params.ref}": ${(error as Error).message}`);
+      }
+    },
+  });
+
+  unsafePi.registerTool({
     name: "gitagent_remember",
     label: "Remember",
     description:
@@ -899,13 +1096,27 @@ export default function piGitagent(pi: ExtensionAPI) {
   // ── /gitagent command ────────────────────────────────────────────────
 
   unsafePi.registerCommand("gitagent", {
-    description: "Load a gitagent agent into this session",
+    description: "Install, inspect, and load gitagent agents",
     handler: async (args: string | undefined, ctx: UiContext) => {
       const parts = (args ?? "").trim().split(/\s+/);
       const subcommand = parts[0] || "";
       const rest = parts.slice(1).join(" ").trim();
 
       switch (subcommand) {
+        case "install": {
+          if (!rest) {
+            ctx.ui.notify("Usage: /gitagent install <local-path|gh:owner/repo[/agent]|https://github.com/...>", "error");
+            return;
+          }
+          handleInstall(ctx, rest);
+          return;
+        }
+
+        case "installed": {
+          handleInstalledList(ctx);
+          return;
+        }
+
         case "load": {
           if (!rest) {
             ctx.ui.notify("Usage: /gitagent load <ref>", "error");

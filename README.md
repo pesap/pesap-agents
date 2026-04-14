@@ -1,8 +1,30 @@
 # agents
 
-A collection of AI agents built with [gitagent](https://github.com/open-gitagent/gitagent), plus **pi-gitagent**: a [pi](https://github.com/badlogic/pi-mono) extension that loads any gitagent agent into your session.
+A collection of gitagent-compatible agents, plus **pi-gitagent**, a [pi](https://github.com/badlogic/pi-mono) extension that lets you install, load, run, and chain agents inside a pi session.
 
-Current repo stats: **14 agents**, **57 skills**, **36 knowledge files**, and **1 pi extension** for `/gitagent`.
+Current repo contents: **15 agents**, **61 skills**, **24 knowledge files**, **1 pi extension**.
+
+## Bundled agents
+
+All bundled agents support persistent memory. Auto feedback learning is on by default.
+
+| Agent | Best for |
+|---|---|
+| [academic-reviewer](./academic-reviewer) | Harsh architecture and code critique |
+| [cli-ux-guru](./cli-ux-guru) | CLI UX, output, and error-message design |
+| [code-reviewer](./code-reviewer) | Bugs, security, performance, and code review |
+| [data-modeler](./data-modeler) | Pydantic and infrasys data modeling |
+| [decomplexify](./decomplexify) | First-principles explanations |
+| [dslop](./dslop) | Multi-agent review-readiness pass |
+| [first-principles-gate](./first-principles-gate) | Blocking overengineering and weak assumptions |
+| [github-ci-optimizer](./github-ci-optimizer) | Faster, cheaper GitHub Actions CI |
+| [infrasys-god](./infrasys-god) | Deep infrasys modeling and migrations |
+| [optimization-modeler](./optimization-modeler) | Optimization formulations and solver tuning |
+| [performance-freak](./performance-freak) | Speed and memory optimization |
+| [pytest-whisperer](./pytest-whisperer) | Pytest suites and test organization |
+| [readme-maestro](./readme-maestro) | README and documentation writing |
+| [simplify](./simplify) | Reuse, quality, and efficiency cleanup |
+| [surgical-dev](./surgical-dev) | Small, disciplined, verified code changes |
 
 ## Install
 
@@ -10,95 +32,90 @@ Current repo stats: **14 agents**, **57 skills**, **36 knowledge files**, and **
 pi install https://github.com/pesap/agents
 ```
 
-That's it. Now you have `/gitagent` in every pi session.
+That adds `/gitagent` to your pi sessions.
 
-## Usage
+## Quick start
 
 ```bash
-# Load a local agent and keep it active in this session
+# Install every bundled agent in this repo
+/gitagent install .
+
+# Install one remote agent, then load it later by name
+/gitagent install gh:pesap/agents/code-reviewer
 /gitagent load code-reviewer
 
-# Load from GitHub (shorthand)
-/gitagent load gh:pesap/agents/code-reviewer
+# Install every agent from a remote multi-agent repo
+/gitagent install gh:pesap/agents
+/gitagent installed
 
-# Load from GitHub (full URL)
-/gitagent load https://github.com/pesap/agents/tree/main/code-reviewer
+# Load directly from a local path or GitHub ref
+/gitagent load simplify
+/gitagent load gh:pesap/agents/simplify
+/gitagent load https://github.com/pesap/agents/tree/main/simplify
 
-# Run one agent without replacing your saved session agent
+# Run one agent without replacing your current loaded agent
 /gitagent run simplify -- review this diff for duplication and complexity
 
-# Chain agents sequentially, passing the previous output forward
-/gitagent chain simplify academic-reviewer surgical-dev -- review this diff, refine the findings, then implement the fix
+# Chain agents in sequence
+/gitagent chain simplify academic-reviewer surgical-dev -- review this diff, refine findings, then implement the fix
 
-# Load any gitagent repo
-/gitagent load gh:shreyas-lyzr/architect
-
-# Create a brand new agent from a prompt
+# Create a new agent via architect
 /gitagent new "a code reviewer specialized in Rust unsafe blocks"
-
-# List agents in a repo
-/gitagent list gh:pesap/agents
-
-# Recommend the best agent for a task
-/gitagent recommend "review a risky Rust refactor for bugs"
-
-# Run diagnostics on the loaded or target agent
-/gitagent doctor
-/gitagent doctor gh:pesap/agents/code-reviewer
-
-# Explain the loaded or target agent's runtime policy
-/gitagent policy
-/gitagent policy gh:pesap/agents/code-reviewer
-
-# Show loaded agent info
-/gitagent info
-
-# Re-pull latest from remote
-/gitagent refresh
-
-# Remove agent context
-/gitagent unload
 ```
 
-Loaded agents persist across sessions in the same pi session file, so you don't need to reload after restarts.
+Loaded agents persist across restarts of the same pi session file.
 
-`/gitagent run` is a one-shot execution path. It temporarily activates the target agent, runs the task, and then restores your previous session agent. `/gitagent chain` does the same thing across multiple agents in sequence.
+## What pi-gitagent does
 
-The runtime now also derives a safety policy for the loaded agent. By default this comes from `metadata.runtime_policy` when present, otherwise it falls back to sensible compliance-based defaults. File edits and risky shell commands can be auto-allowed, approval-gated, or blocked per agent.
+- Loads agents from local paths, installed aliases, GitHub shorthand, or GitHub URLs.
+- Installs aliases into `~/.pi/gitagent/installed.json`.
+- Caches remote repos under `~/.pi/gitagent/cache/github/<owner>/<repo>/<branch>/`.
+- Stores remote-agent memory under `~/.pi/gitagent/memory/<agent-name>/MEMORY.md`.
+- Keeps local-agent memory in the agent's own `memory/` directory.
+- Rejects installs that would silently overwrite an existing installed agent name.
+- Migrates legacy `~/.pitagent/{cache,memory,installed.json}` state into `~/.pi/gitagent/` on first relevant use.
+- Auto-captures user feedback into memory by default. Agents can opt out with `metadata.feedback_memory_hook.enabled: false`.
+- Instructs loaded agents to call `gitagent_remember` immediately for future-useful facts, and to run a memory checklist before finishing non-trivial work.
 
-### LLM-callable tools
+## Commands
 
-The extension also registers tools that the LLM can call directly. When you say "load the simplify agent and review my code", the LLM calls `gitagent_load` with a `followUp` parameter so the review runs with the agent's context active. The command layer now also supports one-shot and sequential workflows via `/gitagent run` and `/gitagent chain`.
+| Command | What it does |
+|---|---|
+| `/gitagent install <ref>` | Install one agent, or all agents in a repo/path, into the local registry |
+| `/gitagent installed` | List installed agents |
+| `/gitagent load <ref>` | Load an agent into the current session |
+| `/gitagent run <ref> -- <task>` | Run one agent without changing the saved session agent |
+| `/gitagent chain <a> <b> -- <task>` | Run multiple agents in sequence |
+| `/gitagent list [ref]` | List agents in a local directory or repo |
+| `/gitagent recommend <task>` | Suggest the best bundled agent for a task |
+| `/gitagent doctor [ref]` | Validate runtime, cache, memory, and model wiring |
+| `/gitagent policy [ref]` | Show the active or target agent's runtime policy |
+| `/gitagent info` | Show the currently loaded agent |
+| `/gitagent refresh` | Re-pull the currently loaded remote ref and reload it |
+| `/gitagent unload` | Remove the active agent context |
+| `/gitagent new <prompt>` | Create a new agent through the architect workflow |
 
-| Tool | Description |
-|------|-------------|
-| `gitagent_load` | Load an agent, optionally queue a follow-up task |
+## LLM-callable tools
+
+| Tool | What it does |
+|---|---|
+| `gitagent_install` | Install one agent, or all agents in a repo/path, into the local registry |
+| `gitagent_load` | Load an agent and optionally queue a follow-up task |
 | `gitagent_unload` | Remove the loaded agent context |
 | `gitagent_info` | Show the currently loaded agent |
 | `gitagent_list` | List available agents in a directory or repo |
-| `gitagent_remember` | Save a learning to the agent's persistent memory |
+| `gitagent_remember` | Save a learning to the agent's memory |
 
-## Skill Usage Protocol and Verification Hooks
+## Memory behavior
 
-Agents with skills now get an explicit runtime protocol:
+- **Persistent memory:** every loaded agent can read and write `MEMORY.md` across sessions.
+- **Auto feedback learning:** on by default, off only when `metadata.feedback_memory_hook.enabled: false`.
+- **Hard memory rule:** loaded agents are explicitly instructed to remember user preferences, conventions, rationale, debugging discoveries, workflow expectations, and repeated corrections.
 
-- Match the task against available skills before execution
-- Apply the selected skill checklists while working
-- Include a `Skills Used` section in the final response (or `none` with reason)
-
-A lightweight hook audits assistant responses and records pass/fail skill checks in session entries (`gitagent-skill-check`). In strict mode, if a response is missing the section, pi queues an automatic follow-up reminder and logs `gitagent-skill-enforcement`.
-
-## Automatic Feedback Memory Hook
-
-Like a mini diary for user preferences, pi-gitagent can auto-capture feedback-looking user messages (preferences, corrections, praise with meta context) and save them into the active agent memory as dated `[feedback/<topic>/<sentiment>]` entries.
-
-This hook is **opt-in per agent** (default off), configured in `agent.yaml` under `metadata.feedback_memory_hook`.
-
-Each capture is logged as a session entry (`gitagent-feedback-captured`) with inferred signal and confidence, deduplicated per turn, and filtered by the configured confidence threshold.
+Example manifest config:
 
 ```yaml
 metadata:
-  category: developer-tools
   feedback_memory_hook:
     enabled: true
     min_confidence: 0.9
@@ -106,112 +123,16 @@ metadata:
     redact_sensitive: true
 ```
 
-When you load an agent, pi-gitagent:
-1. Resolves the agent (local dir or GitHub clone, cached at `~/.pitagent/cache/`)
-2. Parses `agent.yaml`, `SOUL.md`, `RULES.md`, skills, knowledge, memory
-3. Injects the agent's full identity into the system prompt
-4. Switches to the agent's preferred model
-5. Shows a status indicator in the footer
+## Runtime policy and diagnostics
 
-## Runtime Policy, Diagnostics, and Recommendation
+pi-gitagent translates agent metadata into a runtime policy for file writes, destructive shell commands, and network-like operations.
 
-`/gitagent policy` shows how the active agent is allowed to behave at runtime. The current implementation classifies file mutation, destructive shell commands, and networky shell commands, then decides whether to allow, ask, or block.
-
-`/gitagent doctor` validates the agent runtime, including:
-- cache and memory directories are writable
-- preferred and fallback models resolve
-- skills loaded correctly
-- feedback memory hook status
-- active runtime policy summary
-
-`/gitagent recommend <task>` scores agents in the current repo and suggests the best matches with short reasons.
-
-Optional manifest metadata:
-
-```yaml
-metadata:
-  category: developer-tools
-  beginner_friendly: true
-  mutates_files: false
-  best_for:
-    - code review
-    - security review
-  runtime_policy:
-    mode: supervised
-    approvals:
-      file_write: ask
-      bash_destructive: ask
-      network: ask
-    allow_tools:
-      - read
-      - bash
-    deny_patterns:
-      bash:
-        - rm -rf
-        - git push
-```
-
-## Creating New Agents
-
-`/gitagent new <prompt>` temporarily loads the [gitagent architect](https://github.com/shreyas-lyzr/architect) into your session, sends your prompt, and lets it create a full agent (agent.yaml, SOUL.md, RULES.md, skills, etc.) in your working directory. Once the architect finishes, your previous agent is automatically restored.
+Use:
 
 ```bash
-/gitagent new "an agent that reviews SQL queries for performance and security"
+/gitagent policy
+/gitagent doctor
 ```
-
-## What Gets Loaded
-
-| gitagent file | How it's used in pi |
-|---------------|---------------------|
-| `SOUL.md` | Appended to system prompt (identity, personality) |
-| `RULES.md` | Appended to system prompt (hard constraints) |
-| `PROMPT.md` | Appended to system prompt (operational instructions) |
-| `DUTIES.md` | Appended to system prompt (segregation of duties) |
-| `skills/` | Loaded into prompt with `When to use` + checklist instructions, plus response protocol (`Skills Used`) |
-| `knowledge/` | `always_load` docs baked into system prompt |
-| `memory/MEMORY.md` | Loaded into context, agent can write learnings back |
-| `agent.yaml` model | Auto-switches pi to the preferred model |
-| `agent.yaml` compliance | Translated to behavioral constraints |
-
-## Memory and Learning
-
-Agent memory is stored in a centralized location at `~/.pitagent/memory/<agent-name>/MEMORY.md`, separate from both local agent directories and the remote clone cache. This means:
-
-- **Memory survives cache clears.** Running `/gitagent refresh` (which does `git reset --hard` on cached repos) won't nuke your learnings.
-- **Same memory regardless of source.** Whether you load an agent locally or from GitHub, the agent reads and writes from the same memory file. No duplicated or lost state.
-- **Safe from accidents.** Memory isn't sitting inside a shallow clone that can be wiped at any time.
-
-The LLM saves learnings by calling the `gitagent_remember` tool, and feedback can also be captured automatically by hook (for agents with `feedback_memory_hook.enabled=true`) when user messages look like preferences/corrections. Entries are concise and dated. On session shutdown, if nothing was saved and the session was non-trivial (2+ user messages), a session note is auto-appended so no context is silently lost.
-
-```
-~/.pitagent/
-├── cache/                          # Cloned repos (disposable)
-│   └── <hash>/
-└── memory/                         # Agent learnings (persistent)
-    ├── code-reviewer/
-    │   └── MEMORY.md
-    └── performance-freak/
-        └── MEMORY.md
-```
-
-## Agents
-
-| Agent | Description |
-|-------|-------------|
-| [academic-reviewer](./academic-reviewer) (`reviewer-2`) | Ruthless code and architecture critique |
-| [cli-ux-guru](./cli-ux-guru) | CLI UX, output formatting, and error-message design |
-| [code-reviewer](./code-reviewer) | Analyzes code for bugs, security issues, performance, and style |
-| [data-modeler](./data-modeler) | Expert data modeler for Pydantic v2 and infrasys |
-| [decomplexify](./decomplexify) | First-principles breakdowns with Feynman-style explanations |
-| [dslop](./dslop) | Multi-agent review-readiness pass before commit |
-| [github-ci-optimizer](./github-ci-optimizer) | Optimizes GitHub Actions CI |
-| [infrasys-god](./infrasys-god) | Deep infrasys modeling, storage, and migration expertise |
-| [optimization-modeler](./optimization-modeler) | Simplifies formulations and tunes solvers |
-| [performance-freak](./performance-freak) | Optimizes code for speed and memory efficiency |
-| [pytest-whisperer](./pytest-whisperer) | Writes and tunes pytest suites, including performance tests |
-| [readme-maestro](./readme-maestro) | Crafts README files and docs that are easy to scan and use |
-| [simplify](./simplify) | Reviews code for reuse, quality, and efficiency |
-| [surgical-dev](./surgical-dev) | Minimal, verified code changes guided by Karpathy-style principles |
 
 ## Try without installing
 
@@ -219,9 +140,9 @@ The LLM saves learnings by calling the `gitagent_remember` tool, and feedback ca
 pi -e git:github.com/pesap/agents
 ```
 
-Then use `/gitagent` as normal. The extension is loaded for that session only.
+That loads the extension for the current pi session only.
 
 ## Built with
 
-- [gitagent](https://github.com/open-gitagent/gitagent) — git-native agent standard
-- [pi](https://github.com/badlogic/pi-mono) — coding agent harness
+- [gitagent](https://github.com/open-gitagent/gitagent)
+- [pi](https://github.com/badlogic/pi-mono)

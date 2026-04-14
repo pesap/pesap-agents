@@ -136,6 +136,8 @@ function parseSkillBody(raw: string): { whenToUse: string; instructionChecklist:
 export interface LoadOptions {
   /** Base directory for centralized memory storage. Memory goes to <memoryBaseDir>/<agent-name>/MEMORY.md */
   memoryBaseDir?: string;
+  /** Create the memory directory if it does not exist yet. Defaults to true. */
+  createMemoryDir?: boolean;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────
@@ -153,7 +155,9 @@ export function loadAgent(agentDir: string, options?: LoadOptions): LoadedAgent 
   const memoryDir = options?.memoryBaseDir
     ? join(options.memoryBaseDir, manifest.name)
     : join(agentDir, "memory");
-  mkdirSync(memoryDir, { recursive: true });
+  if (options?.createMemoryDir !== false) {
+    mkdirSync(memoryDir, { recursive: true });
+  }
   const memoryMdPath = join(memoryDir, "MEMORY.md");
   const memory = readOpt(memoryMdPath);
 
@@ -223,8 +227,26 @@ export function loadAgent(agentDir: string, options?: LoadOptions): LoadedAgent 
     `Memory file: \`${memoryMdPath}\``,
     memoryCommitHint,
     "",
-    "When you learn something important (project conventions, user preferences,",
-    "decision rationale, discovered patterns), write it to your memory file.",
+    "### Hard rule",
+    "When you learn something likely to matter in a future session, call `gitagent_remember` immediately.",
+    "Do not wait until the end if the fact is already clear.",
+    "Prefer several small memory writes over one giant one.",
+    "",
+    "Always remember:",
+    "- user preferences",
+    "- project conventions",
+    "- naming or style decisions",
+    "- architecture decisions and rationale",
+    "- important debugging discoveries",
+    "- workflow expectations",
+    "- repeated corrections from the user",
+    "",
+    "Before finishing any non-trivial task, ask:",
+    "- Did I learn a user preference?",
+    "- Did I learn a project convention?",
+    "- Did I learn a decision rationale?",
+    "- Did I learn a reusable debugging fact?",
+    "If yes, call `gitagent_remember` once per fact.",
     "Keep entries concise and dated. Max 200 lines.",
     "",
     memory ? `### Current Memory\n\n${memory}` : "Memory is currently empty. Start writing learnings as you work.",

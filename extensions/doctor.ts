@@ -1,7 +1,6 @@
 import { accessSync, constants, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type { LoadedAgent } from "./loader.js";
+import { ensureCacheDir } from "./paths.js";
 import { formatPolicySummary } from "./policy.js";
 
 export interface DoctorCheck {
@@ -48,7 +47,7 @@ export function runDoctor(
   const checks: DoctorCheck[] = [];
 
   try {
-    ensureWritableDir(join(homedir(), ".pitagent", "cache"));
+    ensureWritableDir(ensureCacheDir());
     pushCheck(checks, {
       name: "cache-dir",
       status: "pass",
@@ -137,12 +136,13 @@ export function runDoctor(
   const feedbackHook = agent.manifest.metadata?.feedback_memory_hook as
     | { enabled?: boolean }
     | undefined;
+  const feedbackHookEnabled = feedbackHook?.enabled !== false;
   pushCheck(checks, {
     name: "feedback-hook",
-    status: feedbackHook?.enabled ? "pass" : "warn",
-    message: feedbackHook?.enabled
+    status: feedbackHookEnabled ? "pass" : "warn",
+    message: feedbackHookEnabled
       ? "automatic feedback memory hook is enabled"
-      : "automatic feedback memory hook is disabled",
+      : "automatic feedback memory hook is explicitly disabled",
   });
 
   pushCheck(checks, {

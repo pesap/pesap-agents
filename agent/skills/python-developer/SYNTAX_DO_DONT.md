@@ -79,3 +79,45 @@ import time
 
 time.sleep(0.1)
 ```
+
+## 5) Logging and output (structured over print)
+
+```python
+# ✅ Do
+import json
+import logging
+
+logger = logging.getLogger("cli-smoke")
+logger.info(json.dumps({"event": "command_started", "command": "run", "model": "dense-lp"}))
+logger.error(json.dumps({"event": "command_failed", "exit_code": 1, "stderr": "..."}))
+
+# ❌ Don't
+if result.returncode == 0:
+    print("  ✓ ok")
+    continue
+
+failures += 1
+print(f"  ✗ failed (exit {result.returncode})")
+```
+
+## 6) Naming and entrypoint style (explicit, non-magical)
+
+```python
+# ✅ Do
+
+def parse_examples_csv(raw: str) -> list[str]:
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def run_example_cli_smoke() -> int:
+    ...
+
+# ❌ Don't
+
+def _parse_examples_csv(raw: str):
+    ...
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```

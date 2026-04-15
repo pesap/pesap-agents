@@ -23,6 +23,12 @@ const MEMORY_TAIL_LINES = 20;
 const PROMOTION_MIN_OBSERVATIONS = 3;
 const PROMOTION_SUCCESS_THRESHOLD = 0.75;
 const PROMOTION_IMPROVEMENT_THRESHOLD = 0.4;
+const HOOKS_DIR = path.join(AGENT_DIR, "hooks");
+const HOOKS_CONFIG_PATH = path.join(HOOKS_DIR, "hooks.yaml");
+const RISK_APPROVAL_TYPE = "pesap-risk-approval";
+const RISK_APPROVAL_TTL_MINUTES = 20;
+const LOW_CONFIDENCE_THRESHOLD = 0.7;
+const RUNTIME_DAILYLOG_PATH = path.join(AGENT_DIR, "memory", "runtime", "live", "dailylog.md");
 
 type WorkflowType = "debug" | "feature" | "review" | "simplify" | "learn-skill";
 type WorkflowOutcome = "success" | "partial" | "failed";
@@ -31,6 +37,9 @@ const REVIEW_COMMAND_SOURCE = "https://github.com/earendil-works/pi-review";
 const SIMPLIFY_COMMAND_SOURCE = "https://github.com/anthropics/claude-plugins-official/blob/main/plugins/code-simplifier/agents/code-simplifier.md";
 
 type ReviewMode = "uncommitted" | "branch" | "commit" | "pr" | "folder";
+type HookLifecycle = "on_session_start" | "pre_risky_action" | "on_session_end";
+type HookType = "markdown" | "policy";
+type RiskCategory = "destructive_operation" | "secret_or_pii_exposure_risk";
 
 interface ParsedReviewArgs {
   mode: ReviewMode;
@@ -87,9 +96,50 @@ interface LearningState {
   >;
 }
 
+interface HookEntry {
+  type: HookType;
+  path?: string;
+  policy?: string;
+  description?: string;
+}
+
+interface HookConfig {
+  on_session_start: HookEntry[];
+  pre_risky_action: HookEntry[];
+  on_session_end: HookEntry[];
+}
+
+interface HookConfigLoadResult {
+  config: HookConfig;
+  warnings: string[];
+}
+
+interface RiskApproval {
+  reason: string;
+  approvedAt: string;
+  expiresAt: string;
+}
+
+interface RiskEvent {
+  at: string;
+  command: string;
+  category: RiskCategory;
+  detail: string;
+  approved: boolean;
+}
+
 let pendingWorkflow: PendingWorkflow | null = null;
 let agentEnabled = false;
 const learningPathCache = new Map<string, LearningPaths>();
+const DEFAULT_HOOK_CONFIG: HookConfig = {
+  on_session_start: [{ type: "markdown", path: "bootstrap.md", description: "Load compliance baseline and escalation triggers." }],
+  pre_risky_action: [{ type: "policy", policy: "require_human_checker_for_high_risk", description: "Block high-risk execution without explicit approval." }],
+  on_session_end: [{ type: "markdown", path: "teardown.md", description: "Persist compliance-relevant summary and next checks." }],
+};
+let activeHookConfig: HookConfig = DEFAULT_HOOK_CONFIG;
+let riskApproval: RiskApproval | null = null;
+let riskEvents: RiskEvent[] = [];
+let lowConfidenceEvents: Array<{ at: string; workflowId: string; workflowType: WorkflowType; confidence: number; outcome: WorkflowOutcome }> = [];
 
 const BLOCKED_COMMAND_PATTERNS = {
   pip: /(?:^|\n|[;|&]{1,2})\s*(?:\S+\/)?pip\s*(?:$|\s)/m,
@@ -106,6 +156,31 @@ const BLOCKED_COMMAND_PATTERNS = {
 const UV_INSTALL_GUIDANCE = [
   "To install a package for a script: uv run --with PACKAGE python script.py",
   "To add a dependency to the project: uv add PACKAGE",
+];
+
+const DESTRUCTIVE_COMMAND_PATTERNS: Array<{ pattern: RegExp; detail: string }> = [
+  {
+    pattern: /(?:^|\n|[;|&]{1,2})\s*(?:sudo\s+)?rm\b[^\n;|&]*\s-(?:[^\n;|&]*r[^\n;|&]*f|[^\n;|&]*f[^\n;|&]*r)\b/m,
+    detail: "recursive forced delete",
+  },
+  { pattern: /(?:^|\n|[;|&]{1,2})\s*(?:sudo\s+)?find\b[^\n;|&]*\s-delete\b/m, detail: "find -delete" },
+  { pattern: /(?:^|\n|[;|&]{1,2})\s*git\s+reset\b[^\n;|&]*\s--hard\b/m, detail: "git reset --hard" },
+  { pattern: /(?:^|\n|[;|&]{1,2})\s*git\s+clean\b[^\n;|&]*\s-[^\n;|&]*f[^\n;|&]*\b/m, detail: "git clean -f" },
+  {
+    pattern: /(?:^|\n|[;|&]{1,2})\s*git\s+push\b[^\n;|&]*(?:\s--force(?:-with-lease)?\b|\s-[^\n;|&]*f[^\n;|&]*\b)/m,
+    detail: "forced git push",
+  },
+  { pattern: /(?:^|\n|[;|&]{1,2})\s*(?:sudo\s+)?mkfs\.[a-z0-9]+\b/m, detail: "filesystem formatting" },
+];
+const SENSITIVE_COMMAND_PATTERNS: Array<{ pattern: RegExp; detail: string }> = [
+  {
+    pattern: /(?:^|\n|[;|&]{1,2})\s*(?:cat|less|more|head|tail)\s+[^\n;|&]*(?:\.env(?:\.[\w-]+)?|id_rsa|id_ed25519|\.pem|credentials?|secrets?)\b/m,
+    detail: "potential secret material read",
+  },
+  {
+    pattern: /(?:^|\n|[;|&]{1,2})\s*(?:printenv|env)\b[^\n;|&]*(?:token|secret|password|api[_-]?key)\b/i,
+    detail: "potential secret environment output",
+  },
 ];
 
 function formatBlockedCommandMessage(headline: string, guidance: string[]): string {
@@ -226,6 +301,275 @@ async function appendLine(filePath: string, line: string): Promise<void> {
   await fs.appendFile(filePath, `${line}\n`, "utf8");
 }
 
+function cloneHookConfig(config: HookConfig): HookConfig {
+  return {
+    on_session_start: config.on_session_start.map((entry) => ({ ...entry })),
+    pre_risky_action: config.pre_risky_action.map((entry) => ({ ...entry })),
+    on_session_end: config.on_session_end.map((entry) => ({ ...entry })),
+  };
+}
+
+function stripOuterQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length < 2) return trimmed;
+  const first = trimmed[0];
+  const last = trimmed[trimmed.length - 1];
+  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function isHookLifecycle(value: string): value is HookLifecycle {
+  return value === "on_session_start" || value === "pre_risky_action" || value === "on_session_end";
+}
+
+function parseHooksConfig(raw: string): HookConfigLoadResult {
+  const warnings: string[] = [];
+  const parsed: HookConfig = {
+    on_session_start: [],
+    pre_risky_action: [],
+    on_session_end: [],
+  };
+
+  let currentLifecycle: HookLifecycle | null = null;
+  let currentEntry: HookEntry | null = null;
+
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || trimmed === "hooks:") continue;
+
+    const lifecycleMatch = line.match(/^\s{2}([a-z_]+):\s*$/);
+    if (lifecycleMatch) {
+      const lifecycle = lifecycleMatch[1];
+      if (isHookLifecycle(lifecycle)) {
+        currentLifecycle = lifecycle;
+      } else {
+        currentLifecycle = null;
+        warnings.push(`Unknown hook lifecycle '${lifecycle}' ignored.`);
+      }
+      currentEntry = null;
+      continue;
+    }
+
+    const typeMatch = line.match(/^\s{4}-\s+type:\s+([a-z_]+)\s*$/);
+    if (typeMatch) {
+      if (!currentLifecycle) {
+        warnings.push("Found hook entry before lifecycle section; entry ignored.");
+        currentEntry = null;
+        continue;
+      }
+      const type = stripOuterQuotes(typeMatch[1]);
+      if (type !== "markdown" && type !== "policy") {
+        warnings.push(`Unsupported hook entry type '${type}' under ${currentLifecycle}; entry ignored.`);
+        currentEntry = null;
+        continue;
+      }
+      currentEntry = { type };
+      parsed[currentLifecycle].push(currentEntry);
+      continue;
+    }
+
+    const propertyMatch = line.match(/^\s{6}(path|policy|description):\s+(.+)\s*$/);
+    if (propertyMatch && currentEntry) {
+      const key = propertyMatch[1] as "path" | "policy" | "description";
+      currentEntry[key] = stripOuterQuotes(propertyMatch[2]);
+    }
+  }
+
+  const merged = cloneHookConfig(DEFAULT_HOOK_CONFIG);
+  for (const lifecycle of ["on_session_start", "pre_risky_action", "on_session_end"] as const) {
+    if (parsed[lifecycle].length === 0) {
+      warnings.push(`Hook lifecycle '${lifecycle}' missing entries in hooks.yaml; default policy used.`);
+      continue;
+    }
+    merged[lifecycle] = parsed[lifecycle];
+  }
+
+  return {
+    config: merged,
+    warnings,
+  };
+}
+
+async function loadHooksConfig(): Promise<HookConfigLoadResult> {
+  const raw = await readTextIfExists(HOOKS_CONFIG_PATH);
+  if (!raw.trim()) {
+    return {
+      config: cloneHookConfig(DEFAULT_HOOK_CONFIG),
+      warnings: ["hooks.yaml missing or empty; default hook policy used."],
+    };
+  }
+  return parseHooksConfig(raw);
+}
+
+function hasValidRiskApproval(): boolean {
+  if (!riskApproval) return false;
+  return Date.parse(riskApproval.expiresAt) > Date.now();
+}
+
+function getRiskApprovalFromSession(ctx: ExtensionContext): RiskApproval | null {
+  let approval: RiskApproval | null = null;
+  for (const entry of ctx.sessionManager.getEntries()) {
+    if (entry.type !== "custom") continue;
+    const custom = entry as { customType?: string; data?: { approved?: unknown; reason?: unknown; approvedAt?: unknown; expiresAt?: unknown } };
+    if (custom.customType !== RISK_APPROVAL_TYPE) continue;
+    if (custom.data?.approved !== true) {
+      approval = null;
+      continue;
+    }
+    if (
+      typeof custom.data.reason === "string"
+      && typeof custom.data.approvedAt === "string"
+      && typeof custom.data.expiresAt === "string"
+    ) {
+      approval = {
+        reason: custom.data.reason,
+        approvedAt: custom.data.approvedAt,
+        expiresAt: custom.data.expiresAt,
+      };
+    }
+  }
+  if (!approval) return null;
+  return Date.parse(approval.expiresAt) > Date.now() ? approval : null;
+}
+
+function requiresCheckerForHighRisk(config: HookConfig): boolean {
+  return config.pre_risky_action.some((entry) => entry.type === "policy" && entry.policy === "require_human_checker_for_high_risk");
+}
+
+function classifyRiskyCommand(command: string): { category: RiskCategory; detail: string } | null {
+  for (const entry of DESTRUCTIVE_COMMAND_PATTERNS) {
+    if (entry.pattern.test(command)) {
+      return {
+        category: "destructive_operation",
+        detail: entry.detail,
+      };
+    }
+  }
+  for (const entry of SENSITIVE_COMMAND_PATTERNS) {
+    if (entry.pattern.test(command)) {
+      return {
+        category: "secret_or_pii_exposure_risk",
+        detail: entry.detail,
+      };
+    }
+  }
+  return null;
+}
+
+function buildRiskApprovalRequiredMessage(risk: { category: RiskCategory; detail: string }): string {
+  return [
+    `Error: High-risk command blocked (${risk.category}; ${risk.detail}).`,
+    "Checker approval is required before executing high-risk actions.",
+    "",
+    "Run:",
+    "  /approve-risk \"checker approved: <ticket/reason>\"",
+    "",
+    "Approval is one-time and expires automatically.",
+  ].join("\n");
+}
+
+function recordRiskEvent(command: string, risk: { category: RiskCategory; detail: string }, approved: boolean, at: string): void {
+  riskEvents.push({
+    at,
+    command: summarizeEvidence(command, 200),
+    category: risk.category,
+    detail: risk.detail,
+    approved,
+  });
+}
+
+function evaluateRiskPolicy(command: string): string | null {
+  if (!requiresCheckerForHighRisk(activeHookConfig)) return null;
+  const risk = classifyRiskyCommand(command);
+  if (!risk) return null;
+
+  const at = nowIso();
+  if (!hasValidRiskApproval()) {
+    recordRiskEvent(command, risk, false, at);
+    return buildRiskApprovalRequiredMessage(risk);
+  }
+
+  recordRiskEvent(command, risk, true, at);
+  riskApproval = null;
+  return null;
+}
+
+function parseApproveRiskArgs(args: string): { reason: string; ttlMinutes: number; error?: string } {
+  let rest = normalizeWhitespace(args);
+  const ttlResult = removeFlag(rest, /(^|\s)--ttl\s+(\d+)(\s|$)/);
+  rest = ttlResult.value;
+
+  const ttlCandidate = Number(ttlResult.match?.[2] ?? RISK_APPROVAL_TTL_MINUTES);
+  const ttlMinutes = Number.isFinite(ttlCandidate) ? Math.max(1, Math.min(120, Math.floor(ttlCandidate))) : RISK_APPROVAL_TTL_MINUTES;
+  if (!rest) {
+    return {
+      reason: "",
+      ttlMinutes,
+      error: "Usage: /approve-risk <checker approval reason> [--ttl MINUTES]",
+    };
+  }
+
+  return {
+    reason: rest,
+    ttlMinutes,
+  };
+}
+
+async function buildLifecycleHookMarkdown(lifecycle: HookLifecycle): Promise<string> {
+  const entries = activeHookConfig[lifecycle].filter((entry) => entry.type === "markdown" && typeof entry.path === "string");
+  if (entries.length === 0) return "";
+
+  const sections: string[] = [];
+  for (const entry of entries) {
+    const hookPath = path.join(HOOKS_DIR, entry.path!);
+    const content = await readTextIfExists(hookPath);
+    sections.push(
+      content.trim()
+        ? `[${lifecycle}:${entry.path}]\n${content.trim()}`
+        : `[${lifecycle}:${entry.path}]\n(Missing hook markdown file or empty content)`,
+    );
+  }
+
+  return sections.join("\n\n");
+}
+
+async function appendRuntimeDailyLog(line: string): Promise<void> {
+  try {
+    await appendLine(RUNTIME_DAILYLOG_PATH, line);
+  } catch {
+    // best-effort only
+  }
+}
+
+async function runSessionEndHooks(pi: ExtensionAPI, ctx: Pick<ExtensionContext, "hasUI" | "ui">): Promise<void> {
+  const teardownHooks = await buildLifecycleHookMarkdown("on_session_end");
+  const summary = {
+    at: nowIso(),
+    riskEvents,
+    lowConfidenceEvents,
+    teardownHooksLoaded: Boolean(teardownHooks.trim()),
+  };
+  pi.appendEntry("pesap-hook-summary", summary);
+
+  const executedHighRisk = riskEvents.filter((event) => event.approved).length;
+  const blockedHighRisk = riskEvents.filter((event) => !event.approved).length;
+  notify(
+    ctx,
+    `Hook teardown summary: high-risk approved=${executedHighRisk}, blocked=${blockedHighRisk}, low-confidence=${lowConfidenceEvents.length}.`,
+    "info",
+  );
+
+  await appendRuntimeDailyLog(
+    `- ${summary.at.slice(0, 10)}: hook-summary approved_high_risk=${executedHighRisk} blocked_high_risk=${blockedHighRisk} low_confidence=${lowConfidenceEvents.length}`,
+  );
+
+  riskEvents = [];
+  lowConfidenceEvents = [];
+  riskApproval = null;
+}
+
 
 
 function getAgentEnabledFromSession(ctx: ExtensionContext): boolean {
@@ -316,12 +660,22 @@ function parseLearnSkillArgs(args: string): {
 
   const fromFileResult = removeFlag(rest, /(^|\s)--from-file\s+(\S+)(\s|$)/);
   rest = fromFileResult.value;
-  const fromFile = fromFileResult.match?.[2];
-
+  let fromFile = fromFileResult.match?.[2];
   const fromUrlResult = removeFlag(rest, /(^|\s)--from-url\s+(\S+)(\s|$)/);
   rest = fromUrlResult.value;
-  const fromUrl = fromUrlResult.match?.[2];
+  let fromUrl = fromUrlResult.match?.[2];
 
+  const fromResult = removeFlag(rest, /(^|\s)--from\s+(\S+)(\s|$)/);
+  rest = fromResult.value;
+  const from = fromResult.match?.[2];
+
+  if (from && !fromFile && !fromUrl) {
+    if (/^(?:https?:\/\/|ssh:\/\/|file:\/\/|git@)/.test(from)) {
+      fromUrl = from;
+    } else {
+      fromFile = from;
+    }
+  }
   return {
     topic: rest,
     fromFile,
@@ -598,32 +952,38 @@ function extractLastAssistantText(messages: unknown): string {
   return "";
 }
 
-function inferOutcomeFromText(text: string): { outcome: WorkflowOutcome; confidence: number } {
+function inferOutcomeFromText(text: string): { outcome: WorkflowOutcome; confidence: number; strictViolation?: string } {
   const resultMatch = text.match(/(?:^|\n)\s*Result\s*:\s*(success|partial|failed)\b/i);
   const confidenceMatch = text.match(/(?:^|\n)\s*Confidence\s*:\s*([0-9]{1,3}(?:\.[0-9]+)?%?)/i);
+  const missingFields: string[] = [];
+  if (!resultMatch) missingFields.push("Result");
+  if (!confidenceMatch) missingFields.push("Confidence");
 
-  let outcome: WorkflowOutcome;
-  if (resultMatch) {
-    outcome = resultMatch[1].toLowerCase() as WorkflowOutcome;
-  } else if (/(\bfailed\b|\berror\b|\bunable\b|\bcannot\b|\bcan't\b)/i.test(text)) {
-    outcome = "failed";
-  } else if (/(\bpartial\b|\bincomplete\b|\bfollow-up\b)/i.test(text)) {
-    outcome = "partial";
+  if (missingFields.length > 0) {
+    return {
+      outcome: "failed",
+      confidence: 0,
+      strictViolation: `Missing required footer field(s): ${missingFields.join(", ")}.`,
+    };
+  }
+
+  const outcome = resultMatch[1].toLowerCase() as WorkflowOutcome;
+  const raw = confidenceMatch[1] ?? "";
+  let confidence: number;
+  if (raw.endsWith("%")) {
+    confidence = Number(raw.slice(0, -1)) / 100;
   } else {
-    outcome = "success";
+    const numeric = Number(raw);
+    confidence = numeric > 1 ? numeric / 100 : numeric;
   }
 
-  let confidence = outcome === "success" ? 0.65 : outcome === "partial" ? 0.5 : 0.35;
-  if (confidenceMatch) {
-    const raw = confidenceMatch[1] ?? "";
-    if (raw.endsWith("%")) {
-      confidence = Number(raw.slice(0, -1)) / 100;
-    } else {
-      const numeric = Number(raw);
-      confidence = numeric > 1 ? numeric / 100 : numeric;
-    }
+  if (!Number.isFinite(confidence)) {
+    return {
+      outcome: "failed",
+      confidence: 0,
+      strictViolation: "Invalid Confidence value. Use a numeric value like `0.82`.",
+    };
   }
-
   return { outcome, confidence: clampConfidence(confidence) };
 }
 
@@ -756,12 +1116,13 @@ async function getLearnedSkillsList(cwd: string): Promise<string[]> {
 }
 
 async function getBootstrapPayload(cwd: string): Promise<string> {
-  const [soul, rules, duties, instructions, complianceProfile, memoryTail, learnedSkills] = await Promise.all([
+  const [soul, rules, duties, instructions, complianceProfile, startupHooks, memoryTail, learnedSkills] = await Promise.all([
     readTextIfExists(path.join(AGENT_DIR, "SOUL.md")),
     readTextIfExists(path.join(AGENT_DIR, "RULES.md")),
     readTextIfExists(path.join(AGENT_DIR, "DUTIES.md")),
     readTextIfExists(path.join(AGENT_DIR, "INSTRUCTIONS.md")),
     readTextIfExists(path.join(AGENT_DIR, "compliance", "risk-assessment.md")),
+    buildLifecycleHookMarkdown("on_session_start"),
     getLearningMemoryTail(cwd),
     getLearnedSkillsList(cwd),
   ]);
@@ -782,6 +1143,9 @@ async function getBootstrapPayload(cwd: string): Promise<string> {
     complianceProfile.trim() ? "" : "",
     complianceProfile.trim() ? "[COMPLIANCE PROFILE]" : "",
     complianceProfile.trim(),
+    startupHooks.trim() ? "" : "",
+    startupHooks.trim() ? "[LIFECYCLE HOOKS: on_session_start]" : "",
+    startupHooks.trim(),
     memoryTail ? "" : "",
     memoryTail ? "[LEARNING MEMORY TAIL]" : "",
     memoryTail,
@@ -948,10 +1312,13 @@ async function completeWorkflowTracking(
   workflow: PendingWorkflow,
   assistantText: string,
 ): Promise<void> {
-  const { outcome, confidence } = inferOutcomeFromText(assistantText);
+  const inference = inferOutcomeFromText(assistantText);
+  const { outcome, confidence, strictViolation } = inference;
   const paths = await ensureLearningStore(ctx.cwd);
   const finishedAt = nowIso();
-
+  const evidenceSnippet = strictViolation
+    ? summarizeEvidence(`${strictViolation} ${assistantText}`)
+    : summarizeEvidence(assistantText);
   const runRecord = {
     version: LEARNING_VERSION,
     id: workflow.id,
@@ -962,7 +1329,8 @@ async function completeWorkflowTracking(
     finishedAt,
     outcome,
     confidence,
-    evidenceSnippet: summarizeEvidence(assistantText),
+    strictViolation: strictViolation ?? null,
+    evidenceSnippet,
   };
 
   await fs.writeFile(workflow.runFile, `${JSON.stringify(runRecord, null, 2)}\n`, "utf8");
@@ -991,12 +1359,29 @@ async function completeWorkflowTracking(
     type: workflow.type,
     outcome,
     confidence,
+    strictViolation: strictViolation ?? null,
     at: finishedAt,
   });
 
+  if (confidence < LOW_CONFIDENCE_THRESHOLD) {
+    lowConfidenceEvents.push({
+      at: finishedAt,
+      workflowId: workflow.id,
+      workflowType: workflow.type,
+      confidence,
+      outcome,
+    });
+  }
+
   await maybeEmitPromotionHint(paths, observation, ctx);
 
-  notify(ctx, `Workflow ${workflow.type} completed (${outcome}, confidence=${confidence.toFixed(2)}).`, "info");
+  notify(
+    ctx,
+    strictViolation
+      ? `Workflow ${workflow.type} completed with strict-output violation (${strictViolation}). Marked failed.`
+      : `Workflow ${workflow.type} completed (${outcome}, confidence=${confidence.toFixed(2)}).`,
+    strictViolation ? "error" : "info",
+  );
 }
 
 async function handleDebug(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
@@ -1030,7 +1415,7 @@ async function handleDebug(pi: ExtensionAPI, args: string, ctx: ExtensionCommand
     `Apply fix: ${applyFixMode}`,
     "",
     debugInstruction,
-    "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`.",
+    "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`. Missing either line is treated as failed.",
   ]);
   pi.appendEntry("pesap-debug-command", {
     problem: parsed.problem,
@@ -1073,7 +1458,7 @@ async function handleFeature(pi: ExtensionAPI, args: string, ctx: ExtensionComma
     subagentAvailable
       ? "Instruction: Use parallel subagents for implementation/tests/docs when that reduces delivery time or risk."
       : "Instruction: pi-subagents is not installed in this session, run implementation/tests/docs sequentially without subagent delegation.",
-    "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`.",
+    "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`. Missing either line is treated as failed.",
   ]);
   pi.appendEntry("pesap-feature-command", {
     request: parsed.request,
@@ -1134,7 +1519,7 @@ async function handleReview(pi: ExtensionAPI, args: string, ctx: ExtensionComman
         ].join("\n")
       : "",
     "Instruction: Prioritize correctness, security, performance, and maintainability findings with concrete evidence.",
-    "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`.",
+    "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`. Missing either line is treated as failed.",
   ]);
 
   pi.appendEntry("pesap-review-command", {
@@ -1178,7 +1563,7 @@ async function handleSimplify(pi: ExtensionAPI, args: string, ctx: ExtensionComm
     `Instruction: ${target.instruction}`,
     parsed.extraInstruction ? `Additional focus: ${parsed.extraInstruction}` : "",
     "Instruction: Preserve exact behavior, API shape, and outputs. Ask before any semantic change.",
-    "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`.",
+    "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`. Missing either line is treated as failed.",
   ]);
 
   pi.appendEntry("pesap-simplify-command", {
@@ -1199,7 +1584,7 @@ async function handleLearnSkill(pi: ExtensionAPI, args: string, ctx: ExtensionCo
     return;
   }
   if (!parsed.topic && !parsed.fromFile && !parsed.fromUrl) {
-    notify(ctx, "Usage: /learn-skill <topic> [--from-file path] [--from-url url] [--dry-run]", "error");
+    notify(ctx, "Usage: /learn-skill <topic> [--from <path|url>] [--from-file path] [--from-url url] [--dry-run]", "error");
     return;
   }
 
@@ -1256,7 +1641,7 @@ async function handleLearnSkill(pi: ExtensionAPI, args: string, ctx: ExtensionCo
       : "",
     "",
     "Instruction: Keep the skill concise and include explicit 'Use when' and 'Avoid when' sections.",
-    "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`.",
+    "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`. Missing either line is treated as failed.",
   ]);
 
   pi.appendEntry("pesap-learn-skill-command", {
@@ -1288,6 +1673,11 @@ export default function pesapExtension(pi: ExtensionAPI): void {
         throw new Error(blockedMessage);
       }
 
+      const riskPolicyMessage = evaluateRiskPolicy(spawnContext.command);
+      if (riskPolicyMessage) {
+        throw new Error(riskPolicyMessage);
+      }
+
       return {
         ...spawnContext,
         command: prependInterceptedCommandsPath(spawnContext.command),
@@ -1298,9 +1688,24 @@ export default function pesapExtension(pi: ExtensionAPI): void {
   pi.registerTool(bashTool);
   pi.on("session_start", async (_event, ctx) => {
     const paths = await ensureLearningStore(ctx.cwd);
+    const hookConfig = await loadHooksConfig();
+    activeHookConfig = hookConfig.config;
+
+    for (const warning of hookConfig.warnings) {
+      notify(ctx, `Hook config warning: ${warning}`, "warning");
+    }
+
+    riskApproval = getRiskApprovalFromSession(ctx);
     agentEnabled = getAgentEnabledFromSession(ctx);
     setAgentEnabledState(ctx, agentEnabled);
     notify(ctx, `pesap-agent path: ${paths.root}`, "info");
+  });
+
+  pi.on("session_shutdown", async (_event, ctx) => {
+    if (!agentEnabled) return;
+    pendingWorkflow = null;
+    await runSessionEndHooks(pi, ctx);
+    setAgentEnabledState(ctx, false);
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
@@ -1317,7 +1722,7 @@ export default function pesapExtension(pi: ExtensionAPI): void {
     if (!workflow) return;
     pendingWorkflow = null;
 
-    const text = extractLastAssistantText((event as { messages?: unknown }).messages) || "Result: partial\nConfidence: 0.3\nNo assistant output captured.";
+    const text = extractLastAssistantText((event as { messages?: unknown }).messages) || "No assistant output captured.";
     await completeWorkflowTracking(pi, ctx, workflow, text);
   });
 
@@ -1341,8 +1746,36 @@ export default function pesapExtension(pi: ExtensionAPI): void {
         return;
       }
       pendingWorkflow = null;
+      await runSessionEndHooks(pi, ctx);
       setAgentEnabledState(ctx, false);
       pi.appendEntry(AGENT_STATE_TYPE, { initialized: false, enabled: false, at: nowIso() });
+    },
+  });
+  pi.registerCommand("approve-risk", {
+    description: "Record checker approval for one high-risk command",
+    handler: async (args, ctx) => {
+      const parsed = parseApproveRiskArgs(args ?? "");
+      if (parsed.error) {
+        notify(ctx, parsed.error, "error");
+        return;
+      }
+
+      const approvedAt = nowIso();
+      const expiresAt = new Date(Date.now() + parsed.ttlMinutes * 60_000).toISOString();
+      riskApproval = {
+        reason: parsed.reason,
+        approvedAt,
+        expiresAt,
+      };
+
+      pi.appendEntry(RISK_APPROVAL_TYPE, {
+        approved: true,
+        reason: parsed.reason,
+        approvedAt,
+        expiresAt,
+      });
+
+      notify(ctx, `Risk approval recorded until ${expiresAt}.`, "success");
     },
   });
   pi.registerCommand("debug", {

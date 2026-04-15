@@ -50,13 +50,33 @@ description: Python implementation workflow aligned with the python-developer su
 - Be concise and direct.
 - Always report changed files, validation commands, and residual risks.
 
+7) Logging and output
+- Prefer structured logs for operational messages (`logging` with JSON payloads or `loguru`).
+- Do not use `print(...)` for routine progress/success/failure chatter.
+- Print to stdout only when a command contract explicitly requires user-facing or machine-readable output.
+
+8) Naming and entrypoints
+- Avoid leading-underscore private methods/functions in normal project code; prefer explicit public names.
+- Treat "private" naming as hidden magic unless a framework/protocol explicitly requires it.
+- Prefer callable functions over `if __name__ == "__main__":` blocks unless the user explicitly asks for a script entrypoint.
+
+9) Documentation and docstrings
+- Use NumPy-style docstrings for every new or modified function/method.
+- Each function/method docstring must include at least one runnable example in an `Examples` section.
+- Keep examples minimal and realistic (copy/paste friendly).
+
 ## Syntax examples reference
 - See `SYNTAX_DO_DONT.md` in this same skill directory.
+- See `NUMPY_DOCSTRING_STYLE.md` for required docstring structure and examples.
 - Keep these patterns consistent in implementation and review:
   - Function signatures (primary subject positional, config keyword-only)
   - Structured returns (single typed object)
   - Narrow exception handling (no catch-all)
   - Async-safe syntax (no blocking calls in async flows)
+  - Structured logging (avoid print-driven progress output)
+  - Public naming (avoid underscore-private helpers by default)
+  - Entry style (prefer callable entry functions over `__main__` guards unless requested)
+  - NumPy docstring format with at least one example per function/method
 ## Workflow
 1. Restate assumptions and acceptance criteria.
 2. Read touched code paths end-to-end.

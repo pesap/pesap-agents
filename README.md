@@ -18,9 +18,10 @@ pi -e https://github.com/pesap/agents
 
 - `/start-agent` - initialize pesap-agent context injection in the current session
 - `/end-agent` - stop pesap-agent context injection in the current session
+- `/approve-risk <reason> [--ttl MINUTES]` - record temporary checker approval required for one high-risk shell action
 - `/debug <problem> [--parallel N] [--fix]` (auto-initializes the agent if needed, and parallel delegation falls back to single-agent mode when pi-subagents is unavailable)
 - `/feature <request> [--parallel N] [--ship]` (auto-initializes the agent if needed, and parallel delegation falls back to single-agent mode when pi-subagents is unavailable)
-- `/learn-skill <topic> [--from-file path] [--from-url url] [--dry-run]`
+- `/learn-skill <topic> [--from <path|url>] [--from-file path] [--from-url url] [--dry-run]`
 - `/review [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>] [--extra "focus"]` (adapted from `https://github.com/earendil-works/pi-review`)
 - `/simplify [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>] [--extra "focus"]` (code simplification workflow, behavior-preserving)
 - `/reaview ...` - alias for `/review`
@@ -33,8 +34,10 @@ When pesap-agent is enabled (`/start-agent`, or auto-enabled by workflow command
 - `python`, `python3` → routed through `uv run` wrappers when invoked by command name
 - `python -m pip|venv|py_compile` → blocked with actionable alternatives
 - path-qualified Python executables (e.g. `/usr/bin/python3`, `.venv/bin/python`) → blocked to prevent interception bypass
+- high-risk destructive or sensitive shell commands (e.g. `rm -rf`, `git reset --hard`, force-push, obvious secret reads) → blocked unless checker approval is recorded via `/approve-risk`
 
 Run `/end-agent` to disable this interception for the current session.
+Teardown lifecycle hooks run on both `/end-agent` and `session_shutdown`.
 ## Self-learning storage
 
 The extension writes durable learning artifacts to a local writable store:
@@ -62,9 +65,10 @@ Stored artifacts:
 
 - `agent/DUTIES.md` - maker/checker separation and escalation boundaries
 - `agent/compliance/` - risk profile, capability controls, and review cadence
-- `agent/hooks/` - bootstrap/teardown compliance hook stubs
+- `agent/hooks/` - lifecycle hook policy that is loaded and enforced at runtime (`on_session_start`, `pre_risky_action`, `on_session_end`)
 - `agent/memory/runtime/live/` - `dailylog.md`, `key-decisions.md`, `context.md`
 - `agent/tools/search.yaml` + `agent/tools/capability/search.yaml` - tool schema and capability mapping
+- Hook warnings are surfaced at session start if `agent/hooks/hooks.yaml` is missing or malformed; defaults are applied for safety.
 
 ## Design goals
 

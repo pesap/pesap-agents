@@ -30,10 +30,11 @@ const RISK_APPROVAL_TTL_MINUTES = 20;
 const LOW_CONFIDENCE_THRESHOLD = 0.7;
 const RUNTIME_DAILYLOG_PATH = path.join(AGENT_DIR, "memory", "runtime", "live", "dailylog.md");
 
-type WorkflowType = "debug" | "feature" | "review" | "simplify" | "learn-skill";
+type WorkflowType = "debug" | "feature" | "review" | "git-review" | "simplify" | "learn-skill";
 type WorkflowOutcome = "success" | "partial" | "failed";
 
 const REVIEW_COMMAND_SOURCE = "https://github.com/earendil-works/pi-review";
+const GIT_REVIEW_COMMAND_SOURCE = "https://piechowski.io/post/git-commands-before-reading-code/";
 const SIMPLIFY_COMMAND_SOURCE = "https://github.com/anthropics/claude-plugins-official/blob/main/plugins/code-simplifier/agents/code-simplifier.md";
 
 type ReviewMode = "uncommitted" | "branch" | "commit" | "pr" | "folder";
@@ -728,17 +729,33 @@ function tokenizeArgs(value: string): string[] {
   return tokens;
 }
 
-function parseReviewArgs(args: string, commandName = "review"): ParsedReviewArgs {
-  const usage = `Usage: /${commandName} [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>] [--extra "focus"]`;
+function isResolvableReviewPath(entry: string, cwd: string): boolean {
+  const value = entry.trim();
+  if (!value) return false;
+  if (existsSync(path.resolve(cwd, value))) return true;
+
+  return (
+    value === "." ||
+    value === ".." ||
+    value.startsWith("./") ||
+    value.startsWith("../") ||
+    value.startsWith("/") ||
+    value.startsWith("~/") ||
+    value.includes("/") ||
+    value.includes("\\") ||
+    value.includes(".")
+  );
+}
+
+function parseReviewArgs(args: string, cwd: string, commandName = "review"): ParsedReviewArgs {
+  const usage = `Usage: /${commandName} [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>|file <paths...>|<paths...>] [--extra "focus"]`;
   const trimmed = args.trim();
   if (!trimmed) {
     return { mode: "uncommitted" };
   }
-
   const tokens = tokenizeArgs(trimmed);
   const positional: string[] = [];
   let extraInstruction: string | undefined;
-
   for (let i = 0; i < tokens.length; i += 1) {
     const token = tokens[i];
     if (token === "--extra") {
@@ -749,24 +766,19 @@ function parseReviewArgs(args: string, commandName = "review"): ParsedReviewArgs
       extraInstruction = extra;
       break;
     }
-
     positional.push(token);
   }
-
   if (positional.length === 0) {
     return { mode: "uncommitted", extraInstruction };
   }
-
   const [modeToken, ...rest] = positional;
   const mode = modeToken.toLowerCase();
-
   if (mode === "uncommitted") {
     if (rest.length > 0) {
       return { mode: "uncommitted", error: "`uncommitted` does not accept additional arguments." };
     }
     return { mode: "uncommitted", extraInstruction };
   }
-
   if (mode === "branch") {
     const branch = rest[0]?.trim();
     if (!branch || rest.length !== 1) {
@@ -774,7 +786,6 @@ function parseReviewArgs(args: string, commandName = "review"): ParsedReviewArgs
     }
     return { mode: "branch", branch, extraInstruction };
   }
-
   if (mode === "commit") {
     const commit = rest[0]?.trim();
     if (!commit || rest.length !== 1) {
@@ -782,7 +793,6 @@ function parseReviewArgs(args: string, commandName = "review"): ParsedReviewArgs
     }
     return { mode: "commit", commit, extraInstruction };
   }
-
   if (mode === "pr") {
     const pr = rest[0]?.trim();
     if (!pr || rest.length !== 1) {
@@ -790,15 +800,17 @@ function parseReviewArgs(args: string, commandName = "review"): ParsedReviewArgs
     }
     return { mode: "pr", pr, extraInstruction };
   }
-
-  if (mode === "folder") {
+  if (mode === "folder" || mode === "file") {
     const paths = rest.map((entry) => entry.trim()).filter((entry) => entry.length > 0);
     if (paths.length === 0) {
-      return { mode: "folder", error: `Usage: /${commandName} folder <path ...> [--extra "focus"]` };
+      return { mode: "folder", error: `Usage: /${commandName} ${mode} <path ...> [--extra "focus"]` };
     }
     return { mode: "folder", paths, extraInstruction };
   }
-
+  const directPaths = positional.map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+  if (directPaths.length > 0 && directPaths.every((entry) => isResolvableReviewPath(entry, cwd))) {
+    return { mode: "folder", paths: directPaths, extraInstruction };
+  }
   return {
     mode: "uncommitted",
     error: usage,
@@ -839,8 +851,8 @@ function buildReviewTarget(parsed: ParsedReviewArgs): { summary: string; instruc
   if (parsed.mode === "folder") {
     const paths = parsed.paths ?? [];
     return {
-      summary: `folders ${paths.join(", ")}`,
-      instruction: `Snapshot review only for paths: ${paths.join(", ")}. Read files directly, do not assume git diff context.`,
+      summary: `paths ${paths.join(", ")}`,
+      instruction: `Snapshot review only for files/folders in: ${paths.join(", ")}. Read files directly, do not assume git diff context.`,
       flags: { mode: "folder", paths },
     };
   }
@@ -886,8 +898,8 @@ function buildSimplifyTarget(parsed: ParsedReviewArgs): { summary: string; instr
   if (parsed.mode === "folder") {
     const paths = parsed.paths ?? [];
     return {
-      summary: `folders ${paths.join(", ")}`,
-      instruction: `Simplify code only in paths: ${paths.join(", ")}. Read files directly, do not assume git diff context.`,
+      summary: `paths ${paths.join(", ")}`,
+      instruction: `Simplify code only in these files/folders: ${paths.join(", ")}. Read files directly, do not assume git diff context.`,
       flags: { mode: "folder", paths },
     };
   }
@@ -1480,7 +1492,7 @@ async function handleFeature(pi: ExtensionAPI, args: string, ctx: ExtensionComma
 }
 
 async function handleReview(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
-  const parsed = parseReviewArgs(args);
+  const parsed = parseReviewArgs(args, ctx.cwd);
   if (pendingWorkflow) {
     notify(ctx, `Workflow already running (${pendingWorkflow.type}). Wait for completion before starting another.`, "error");
     return;
@@ -1533,8 +1545,42 @@ async function handleReview(pi: ExtensionAPI, args: string, ctx: ExtensionComman
   notify(ctx, `Started review workflow (${target.summary}).`, "info");
 }
 
+async function handleGitReview(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
+  const extraFocus = normalizeWhitespace(args ?? "");
+  if (pendingWorkflow) {
+    notify(ctx, `Workflow already running (${pendingWorkflow.type}). Wait for completion before starting another.`, "error");
+    return;
+  }
+
+  ensureAgentEnabledForCommand(pi, ctx, "git-review");
+
+  const summary = extraFocus ? `current repository (${extraFocus})` : "current repository";
+  await beginWorkflowTracking(pi, ctx, "git-review", summary, {
+    extraFocus: extraFocus || null,
+    source: GIT_REVIEW_COMMAND_SOURCE,
+  });
+
+  await enqueueWorkflow(pi, "git-review-workflow.md", "git-review-workflow.yaml", [
+    "Repository scope: current working tree",
+    `Source reference: ${GIT_REVIEW_COMMAND_SOURCE}`,
+    "",
+    "Instruction: Run the git diagnostics from the prompt before reading code.",
+    extraFocus ? `Additional focus: ${extraFocus}` : "",
+    "Instruction: Compare churn, authorship, bug clusters, velocity, and firefighting signals.",
+    "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`. Missing either line is treated as failed.",
+  ]);
+
+  pi.appendEntry("pesap-git-review-command", {
+    extraFocus: extraFocus || null,
+    source: GIT_REVIEW_COMMAND_SOURCE,
+    at: nowIso(),
+  });
+
+  notify(ctx, `Started git-review workflow${extraFocus ? ` (${extraFocus})` : ""}.`, "info");
+}
+
 async function handleSimplify(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
-  const parsed = parseReviewArgs(args, "simplify");
+  const parsed = parseReviewArgs(args, ctx.cwd, "simplify");
   if (pendingWorkflow) {
     notify(ctx, `Workflow already running (${pendingWorkflow.type}). Wait for completion before starting another.`, "error");
     return;
@@ -1796,6 +1842,13 @@ export default function pesapExtension(pi: ExtensionAPI): void {
     description: "Run the pesap code review workflow (adapted from pi-review)",
     handler: async (args, ctx) => {
       await handleReview(pi, args ?? "", ctx);
+    },
+  });
+
+  pi.registerCommand("git-review", {
+    description: "Run git history diagnostics before reading code",
+    handler: async (args, ctx) => {
+      await handleGitReview(pi, args ?? "", ctx);
     },
   });
 

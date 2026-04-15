@@ -22,11 +22,20 @@ pi -e https://github.com/pesap/agents
 - `/debug <problem> [--parallel N] [--fix]` (auto-initializes the agent if needed, and parallel delegation falls back to single-agent mode when pi-subagents is unavailable)
 - `/feature <request> [--parallel N] [--ship]` (auto-initializes the agent if needed, and parallel delegation falls back to single-agent mode when pi-subagents is unavailable)
 - `/learn-skill <topic> [--from <path|url>] [--from-file path] [--from-url url] [--dry-run]`
-- `/review [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>] [--extra "focus"]` (adapted from `https://github.com/earendil-works/pi-review`)
+- `/review [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>|file <paths...>|<paths...>] [--extra "focus"]` (adapted from `https://github.com/earendil-works/pi-review`)
 - `/git-review` - run git-history diagnostics before reading code (churn, authorship, bug clusters, velocity, firefighting)
-- `/simplify [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>] [--extra "focus"]` (code simplification workflow, behavior-preserving)
+- `/simplify [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>|file <paths...>|<paths...>] [--extra "focus"]` (code simplification workflow, behavior-preserving)
 - `/reaview ...` - alias for `/review`
 
+### Run review/simplify outside the REPL
+
+These commands also work in non-interactive runs (print mode or RPC), not only in the TUI REPL.
+
+```bash
+pi -e https://github.com/pesap/agents -p "/review README.md --extra 'focus on correctness'"
+pi -e https://github.com/pesap/agents -p "/review folder src docs"
+pi -e https://github.com/pesap/agents -p "/simplify src/commands/review.ts"
+```
 ## Intercepted shell commands (active agent only)
 
 When pesap-agent is enabled (`/start-agent`, or auto-enabled by workflow commands), the extension wraps the `bash` tool and intercepts Python packaging commands inspired by https://github.com/mitsuhiko/agent-stuff:

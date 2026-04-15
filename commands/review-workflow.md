@@ -6,7 +6,7 @@ Source attribution: adapted from Earendil's pi-review command (`https://github.c
 
 Requirements:
 - Be concise and evidence-based.
-- Review only the requested scope (uncommitted, branch diff, commit, PR, or folder snapshot).
+- Review only the requested scope (uncommitted, branch diff, commit, PR, or file/folder snapshot).
 - Prioritize findings by severity (`[P0]` to `[P3]`).
 - Include precise file references for each finding.
 - Provide an overall verdict: `correct` or `needs attention`.

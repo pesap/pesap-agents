@@ -1,0 +1,16 @@
+name: git-review-workflow
+version: 1
+objective: Run git health diagnostics before reading code and identify the highest-value files to inspect first
+steps:
+  - id: scope
+    action: confirm_repository_scope_and_default_time_windows
+  - id: churn
+    action: run_file_churn_and_hotspot_commands
+  - id: authorship
+    action: run_contributor_and_active_window_commands
+  - id: bugs
+    action: run_bug_cluster_and_firefighting_commands
+  - id: synthesis
+    action: compare_signals_and_rank_first_reads
+  - id: learn
+    action: persist_git_review_learnings

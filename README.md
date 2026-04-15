@@ -23,6 +23,7 @@ pi -e https://github.com/pesap/agents
 - `/feature <request> [--parallel N] [--ship]` (auto-initializes the agent if needed, and parallel delegation falls back to single-agent mode when pi-subagents is unavailable)
 - `/learn-skill <topic> [--from <path|url>] [--from-file path] [--from-url url] [--dry-run]`
 - `/review [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>] [--extra "focus"]` (adapted from `https://github.com/earendil-works/pi-review`)
+- `/git-review` - run git-history diagnostics before reading code (churn, authorship, bug clusters, velocity, firefighting)
 - `/simplify [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>] [--extra "focus"]` (code simplification workflow, behavior-preserving)
 - `/reaview ...` - alias for `/review`
 

@@ -33,6 +33,12 @@ Command workflow contracts:
 - Validate safety, brevity, and reusability.
 - Store learnings about when this skill should trigger.
 
+## /git-review
+- Run git-history diagnostics before reading code.
+- Cover churn, authorship, bug clusters, velocity, and revert/hotfix signals.
+- Cross-check churn hotspots with bug hotspots and name the first files to inspect.
+- Store learnings.
+
 Self-improvement policy:
 - May propose edits to `INSTRUCTIONS.md` and skills.
 - Must request approval before applying self-edits.

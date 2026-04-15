@@ -29,5 +29,7 @@ documents:
     purpose: debug orchestration
   - path: skillflows/feature-workflow.yaml
     purpose: feature orchestration
+  - path: skillflows/git-review-workflow.yaml
+    purpose: git history diagnostics orchestration
   - path: skillflows/learn-skill-workflow.yaml
     purpose: skill creation orchestration

@@ -19,4 +19,5 @@ git log --oneline --since="1 year ago" | grep -iE 'revert|hotfix|emergency|rollb
 - Point out the first files worth reading.
 - Note if authorship looks concentrated or recently hollowed out.
 - Mention any squash-merge caveat if the shortlog looks misleading.
+- If you mutate files (`edit`, `write`, or mutating `bash`), include: `Postflight: verify="<command_or_check>" result=<pass|fail|not-run>`.
 - End with: diagnostics summary, top churn files, contributor signals, bug/firefighting signals, recommended first reads, `Result: success|partial|failed`, and `Confidence: 0..1`.

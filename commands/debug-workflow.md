@@ -7,4 +7,5 @@ Requirements:
 - Use hypothesis-driven debugging.
 - Use parallel subagents when multiple hypotheses can be tested independently.
 - If asked to fix, implement the smallest correct fix and validate it.
+- If you mutate files (`edit`, `write`, or mutating `bash`), include: `Postflight: verify="<command_or_check>" result=<pass|fail|not-run>`.
 - End with: root cause, fix summary, validation, learnings, `Result: success|partial|failed`, and `Confidence: 0..1`.

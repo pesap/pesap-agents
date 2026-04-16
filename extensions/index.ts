@@ -29,6 +29,10 @@ const RISK_APPROVAL_TYPE = "pesap-risk-approval";
 const RISK_APPROVAL_TTL_MINUTES = 20;
 const LOW_CONFIDENCE_THRESHOLD = 0.7;
 const RUNTIME_DAILYLOG_PATH = path.join(AGENT_DIR, "memory", "runtime", "live", "dailylog.md");
+const FIRST_PRINCIPLES_CONFIG_PATH = path.join(AGENT_DIR, "compliance", "first-principles-gate.yaml");
+const PREFLIGHT_STATE_TYPE = "pesap-preflight-state";
+const POSTFLIGHT_EVENT_TYPE = "pesap-postflight-event";
+const POLICY_EVENT_TYPE = "pesap-policy-event";
 
 type WorkflowType = "debug" | "feature" | "review" | "git-review" | "simplify" | "learn-skill";
 type WorkflowOutcome = "success" | "partial" | "failed";
@@ -59,6 +63,8 @@ interface PendingWorkflow {
   flags: Record<string, unknown>;
   startedAt: string;
   runFile: string;
+  mutationCount: number;
+  policyWarnings: string[];
 }
 
 interface LearningPaths {
@@ -129,6 +135,40 @@ interface RiskEvent {
   approved: boolean;
 }
 
+type PolicyMode = "monitor" | "warn" | "enforce";
+
+type PolicyPhase = "preflight" | "postflight";
+
+interface FirstPrinciplesConfig {
+  preflightMode: PolicyMode;
+  postflightMode: PolicyMode;
+}
+
+interface PreflightRecord {
+  at: string;
+  skill: string;
+  reason: string;
+  clarify: "yes" | "no";
+  raw: string;
+  source: "manual" | "auto";
+}
+
+interface PostflightRecord {
+  at: string;
+  verify: string;
+  result: "pass" | "fail" | "not-run";
+  raw: string;
+}
+
+interface PolicyEvent {
+  at: string;
+  phase: PolicyPhase;
+  mode: PolicyMode;
+  outcome: "allow" | "warn" | "block";
+  detail: string;
+  toolName?: string;
+}
+
 let pendingWorkflow: PendingWorkflow | null = null;
 let agentEnabled = false;
 const learningPathCache = new Map<string, LearningPaths>();
@@ -141,6 +181,15 @@ let activeHookConfig: HookConfig = DEFAULT_HOOK_CONFIG;
 let riskApproval: RiskApproval | null = null;
 let riskEvents: RiskEvent[] = [];
 let lowConfidenceEvents: Array<{ at: string; workflowId: string; workflowType: WorkflowType; confidence: number; outcome: WorkflowOutcome }> = [];
+let firstPrinciplesConfig: FirstPrinciplesConfig = { preflightMode: "warn", postflightMode: "warn" };
+let activePreflight: PreflightRecord | null = null;
+let latestPostflight: PostflightRecord | null = null;
+let policyEvents: PolicyEvent[] = [];
+
+const PREFLIGHT_LINE_REGEX = /^Preflight:\s+skill=([a-zA-Z0-9_.-]+|none)\s+reason="([^"]{1,200})"\s+clarify=(yes|no)\s*$/;
+const POSTFLIGHT_LINE_REGEX = /^Postflight:\s+verify="([^"]{1,280})"\s+result=(pass|fail|not-run)\s*$/;
+const MUTATION_BASH_PATTERN = /(?:^|\n|[;|&]{1,2})\s*(?:git\s+(?:add|apply|am|commit|checkout|switch|merge|rebase|cherry-pick|revert|reset|restore|clean|stash|tag|branch|push|pull)|rm\b|mv\b|cp\b|mkdir\b|rmdir\b|touch\b|chmod\b|chown\b|sed\b[^\n;|&]*\s-i\b|perl\b[^\n;|&]*\s-i\b|tee\b|truncate\b|dd\b)/m;
+const POSTFLIGHT_INSTRUCTION = "Instruction: If you ran any mutation tool (edit/write/mutating bash), include exactly one line: `Postflight: verify=\"<command_or_check>\" result=<pass|fail|not-run>`.";
 
 const BLOCKED_COMMAND_PATTERNS = {
   pip: /(?:^|\n|[;|&]{1,2})\s*(?:\S+\/)?pip\s*(?:$|\s)/m,
@@ -404,6 +453,51 @@ async function loadHooksConfig(): Promise<HookConfigLoadResult> {
   return parseHooksConfig(raw);
 }
 
+function parsePolicyMode(value: string | undefined): PolicyMode | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "monitor" || normalized === "warn" || normalized === "enforce") return normalized;
+  return null;
+}
+
+async function loadFirstPrinciplesConfig(): Promise<{ config: FirstPrinciplesConfig; warnings: string[] }> {
+  const raw = await readTextIfExists(FIRST_PRINCIPLES_CONFIG_PATH);
+  if (!raw.trim()) {
+    return {
+      config: { preflightMode: "warn", postflightMode: "warn" },
+      warnings: ["first-principles-gate.yaml missing or empty; using defaults (warn/warn)."],
+    };
+  }
+
+  const warnings: string[] = [];
+  let preflightMode: PolicyMode | null = null;
+  let postflightMode: PolicyMode | null = null;
+
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const match = trimmed.match(/^(preflight_mode|postflight_mode):\s*([a-zA-Z_-]+)\s*$/);
+    if (!match) continue;
+
+    const mode = parsePolicyMode(match[2]);
+    if (!mode) {
+      warnings.push(`Invalid ${match[1]} value '${match[2]}' in first-principles-gate.yaml.`);
+      continue;
+    }
+
+    if (match[1] === "preflight_mode") preflightMode = mode;
+    if (match[1] === "postflight_mode") postflightMode = mode;
+  }
+
+  return {
+    config: {
+      preflightMode: preflightMode ?? "warn",
+      postflightMode: postflightMode ?? "warn",
+    },
+    warnings,
+  };
+}
+
 function hasValidRiskApproval(): boolean {
   if (!riskApproval) return false;
   return Date.parse(riskApproval.expiresAt) > Date.now();
@@ -433,6 +527,45 @@ function getRiskApprovalFromSession(ctx: ExtensionContext): RiskApproval | null 
   }
   if (!approval) return null;
   return Date.parse(approval.expiresAt) > Date.now() ? approval : null;
+}
+
+function getPreflightFromSession(ctx: ExtensionContext): PreflightRecord | null {
+  let record: PreflightRecord | null = null;
+  for (const entry of ctx.sessionManager.getEntries()) {
+    if (entry.type !== "custom") continue;
+    const custom = entry as {
+      customType?: string;
+      data?: {
+        at?: unknown;
+        skill?: unknown;
+        reason?: unknown;
+        clarify?: unknown;
+        raw?: unknown;
+        source?: unknown;
+      };
+    };
+    if (custom.customType !== PREFLIGHT_STATE_TYPE) continue;
+    if (!custom.data) continue;
+
+    if (
+      typeof custom.data.at === "string"
+      && typeof custom.data.skill === "string"
+      && typeof custom.data.reason === "string"
+      && (custom.data.clarify === "yes" || custom.data.clarify === "no")
+      && typeof custom.data.raw === "string"
+      && (custom.data.source === "manual" || custom.data.source === "auto")
+    ) {
+      record = {
+        at: custom.data.at,
+        skill: custom.data.skill,
+        reason: custom.data.reason,
+        clarify: custom.data.clarify,
+        raw: custom.data.raw,
+        source: custom.data.source,
+      };
+    }
+  }
+  return record;
 }
 
 function requiresCheckerForHighRisk(config: HookConfig): boolean {
@@ -518,6 +651,42 @@ function parseApproveRiskArgs(args: string): { reason: string; ttlMinutes: numbe
   };
 }
 
+function parsePreflightArgs(args: string): { record?: PreflightRecord; error?: string } {
+  const candidate = args.trim();
+  if (!candidate) {
+    return {
+      error: "Usage: /preflight Preflight: skill=<name|none> reason=\"<short>\" clarify=<yes|no>",
+    };
+  }
+
+  const parsed = parsePreflightLine(candidate);
+  if (!parsed) {
+    return {
+      error: "Invalid preflight. Expected: Preflight: skill=<name|none> reason=\"<short>\" clarify=<yes|no>",
+    };
+  }
+
+  return { record: parsed };
+}
+
+function parsePostflightArgs(args: string): { record?: PostflightRecord; error?: string } {
+  const candidate = args.trim();
+  if (!candidate) {
+    return {
+      error: "Usage: /postflight Postflight: verify=\"<command_or_check>\" result=<pass|fail|not-run>",
+    };
+  }
+
+  const parsed = parsePostflightLine(candidate);
+  if (!parsed) {
+    return {
+      error: "Invalid postflight. Expected: Postflight: verify=\"<command_or_check>\" result=<pass|fail|not-run>",
+    };
+  }
+
+  return { record: parsed };
+}
+
 async function buildLifecycleHookMarkdown(lifecycle: HookLifecycle): Promise<string> {
   const entries = activeHookConfig[lifecycle].filter((entry) => entry.type === "markdown" && typeof entry.path === "string");
   if (entries.length === 0) return "";
@@ -550,25 +719,31 @@ async function runSessionEndHooks(pi: ExtensionAPI, ctx: Pick<ExtensionContext, 
     at: nowIso(),
     riskEvents,
     lowConfidenceEvents,
+    policyEvents,
     teardownHooksLoaded: Boolean(teardownHooks.trim()),
   };
   pi.appendEntry("pesap-hook-summary", summary);
 
   const executedHighRisk = riskEvents.filter((event) => event.approved).length;
   const blockedHighRisk = riskEvents.filter((event) => !event.approved).length;
+  const blockedPolicy = policyEvents.filter((event) => event.outcome === "block").length;
+  const warnedPolicy = policyEvents.filter((event) => event.outcome === "warn").length;
   notify(
     ctx,
-    `Hook teardown summary: high-risk approved=${executedHighRisk}, blocked=${blockedHighRisk}, low-confidence=${lowConfidenceEvents.length}.`,
+    `Hook teardown summary: high-risk approved=${executedHighRisk}, blocked=${blockedHighRisk}, policy(block=${blockedPolicy},warn=${warnedPolicy}), low-confidence=${lowConfidenceEvents.length}.`,
     "info",
   );
 
   await appendRuntimeDailyLog(
-    `- ${summary.at.slice(0, 10)}: hook-summary approved_high_risk=${executedHighRisk} blocked_high_risk=${blockedHighRisk} low_confidence=${lowConfidenceEvents.length}`,
+    `- ${summary.at.slice(0, 10)}: hook-summary approved_high_risk=${executedHighRisk} blocked_high_risk=${blockedHighRisk} policy_blocked=${blockedPolicy} policy_warned=${warnedPolicy} low_confidence=${lowConfidenceEvents.length}`,
   );
 
   riskEvents = [];
   lowConfidenceEvents = [];
+  policyEvents = [];
   riskApproval = null;
+  activePreflight = null;
+  latestPostflight = null;
 }
 
 
@@ -1005,6 +1180,65 @@ function summarizeEvidence(text: string, max = 280): string {
   return `${compact.slice(0, max - 1).trimEnd()}…`;
 }
 
+function parsePreflightLine(line: string): PreflightRecord | null {
+  const match = line.trim().match(PREFLIGHT_LINE_REGEX);
+  if (!match) return null;
+  return {
+    at: nowIso(),
+    skill: match[1],
+    reason: match[2],
+    clarify: match[3] as "yes" | "no",
+    raw: line.trim(),
+    source: "manual",
+  };
+}
+
+function parsePostflightLine(line: string): PostflightRecord | null {
+  const match = line.trim().match(POSTFLIGHT_LINE_REGEX);
+  if (!match) return null;
+  return {
+    at: nowIso(),
+    verify: match[1],
+    result: match[2] as "pass" | "fail" | "not-run",
+    raw: line.trim(),
+  };
+}
+
+function extractPostflightFromAssistantText(text: string): PostflightRecord | null {
+  for (const line of text.split(/\r?\n/)) {
+    const parsed = parsePostflightLine(line);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function isMutationCapableBash(command: string): boolean {
+  return MUTATION_BASH_PATTERN.test(command);
+}
+
+function isMutationToolCall(toolName: string, input: Record<string, unknown>): boolean {
+  if (toolName === "edit" || toolName === "write") return true;
+  if (toolName !== "bash") return false;
+  const command = typeof input.command === "string" ? input.command : "";
+  return isMutationCapableBash(command);
+}
+
+function modeOutcome(mode: PolicyMode, violation: boolean): "allow" | "warn" | "block" {
+  if (!violation) return "allow";
+  if (mode === "enforce") return "block";
+  if (mode === "warn") return "warn";
+  return "allow";
+}
+
+function addPolicyEvent(pi: ExtensionAPI, event: PolicyEvent): void {
+  policyEvents.push(event);
+  pi.appendEntry(POLICY_EVENT_TYPE, event);
+}
+
+function buildPreflightRawLine(record: PreflightRecord): string {
+  return `Preflight: skill=${record.skill} reason="${record.reason}" clarify=${record.clarify}`;
+}
+
 function setStatus(ctx: Pick<ExtensionContext, "hasUI" | "ui">, label?: string): void {
   if (!ctx.hasUI) return;
   ctx.ui.setStatus("pesap", label);
@@ -1218,8 +1452,20 @@ async function beginWorkflowTracking(
   await fs.writeFile(runFile, `${JSON.stringify(record, null, 2)}\n`, "utf8");
   pi.appendEntry("pesap-workflow-start", { id, type, input, flags, startedAt });
 
-  const pending: PendingWorkflow = { id, type, input, flags, startedAt, runFile };
+  const pending: PendingWorkflow = { id, type, input, flags, startedAt, runFile, mutationCount: 0, policyWarnings: [] };
   pendingWorkflow = pending;
+  latestPostflight = null;
+
+  const autoPreflightReason = summarizeEvidence(input, 120).replace(/"/g, "'") || "workflow requested";
+  activePreflight = {
+    at: startedAt,
+    skill: type,
+    reason: autoPreflightReason,
+    clarify: "no",
+    raw: `Preflight: skill=${type} reason="${autoPreflightReason}" clarify=no`,
+    source: "auto",
+  };
+  pi.appendEntry(PREFLIGHT_STATE_TYPE, activePreflight);
 
   return pending;
 }
@@ -1325,12 +1571,51 @@ async function completeWorkflowTracking(
   assistantText: string,
 ): Promise<void> {
   const inference = inferOutcomeFromText(assistantText);
-  const { outcome, confidence, strictViolation } = inference;
   const paths = await ensureLearningStore(ctx.cwd);
   const finishedAt = nowIso();
+
+  const postflightFromOutput = extractPostflightFromAssistantText(assistantText) ?? latestPostflight;
+  const postflightMissing = workflow.mutationCount > 0 && !postflightFromOutput;
+  const postflightDecision = modeOutcome(firstPrinciplesConfig.postflightMode, postflightMissing);
+
+  addPolicyEvent(pi, {
+    at: finishedAt,
+    phase: "postflight",
+    mode: firstPrinciplesConfig.postflightMode,
+    outcome: postflightDecision,
+    detail: postflightMissing
+      ? "Missing postflight evidence after mutation."
+      : `Postflight evidence present (${postflightFromOutput?.result ?? "unknown"}).`,
+  });
+
+  if (postflightDecision === "warn") {
+    const warning = "Policy warning: Missing postflight evidence after mutation.";
+    workflow.policyWarnings.push(warning);
+    notify(ctx, warning, "warning");
+  }
+
+  if (postflightFromOutput) {
+    latestPostflight = postflightFromOutput;
+    pi.appendEntry(POSTFLIGHT_EVENT_TYPE, postflightFromOutput);
+  }
+
+  const hasPreflightWarning = workflow.policyWarnings.some((line) => line.includes("Missing valid preflight"));
+  const qualityScore = Math.max(0, 100 - (hasPreflightWarning ? 50 : 0) - (postflightMissing ? 20 : 0));
+
+  const strictViolations: string[] = [];
+  if (inference.strictViolation) strictViolations.push(inference.strictViolation);
+  if (postflightMissing && firstPrinciplesConfig.postflightMode === "enforce") {
+    strictViolations.push("Missing required postflight evidence.");
+  }
+
+  const strictViolation = strictViolations.length > 0 ? strictViolations.join(" ") : null;
+  const outcome: WorkflowOutcome = strictViolation ? "failed" : inference.outcome;
+  const confidence = inference.confidence;
+
   const evidenceSnippet = strictViolation
     ? summarizeEvidence(`${strictViolation} ${assistantText}`)
     : summarizeEvidence(assistantText);
+
   const runRecord = {
     version: LEARNING_VERSION,
     id: workflow.id,
@@ -1341,8 +1626,17 @@ async function completeWorkflowTracking(
     finishedAt,
     outcome,
     confidence,
-    strictViolation: strictViolation ?? null,
+    strictViolation,
     evidenceSnippet,
+    policy: {
+      preflightMode: firstPrinciplesConfig.preflightMode,
+      postflightMode: firstPrinciplesConfig.postflightMode,
+      mutationCount: workflow.mutationCount,
+      warnings: workflow.policyWarnings,
+      postflightMissing,
+      qualityScore,
+      postflight: postflightFromOutput,
+    },
   };
 
   await fs.writeFile(workflow.runFile, `${JSON.stringify(runRecord, null, 2)}\n`, "utf8");
@@ -1363,7 +1657,7 @@ async function completeWorkflowTracking(
   await appendLine(paths.learningJsonl, JSON.stringify(observation));
   await appendLine(
     paths.memoryMd,
-    `- ${finishedAt.slice(0, 10)} [${workflow.type}/${outcome}] ${summarizeEvidence(workflow.input, 180)} (confidence=${confidence.toFixed(2)})`,
+    `- ${finishedAt.slice(0, 10)} [${workflow.type}/${outcome}] ${summarizeEvidence(workflow.input, 180)} (confidence=${confidence.toFixed(2)}, q=${qualityScore})`,
   );
 
   pi.appendEntry("pesap-workflow-complete", {
@@ -1371,7 +1665,10 @@ async function completeWorkflowTracking(
     type: workflow.type,
     outcome,
     confidence,
-    strictViolation: strictViolation ?? null,
+    strictViolation,
+    qualityScore,
+    mutationCount: workflow.mutationCount,
+    postflightMissing,
     at: finishedAt,
   });
 
@@ -1391,9 +1688,14 @@ async function completeWorkflowTracking(
     ctx,
     strictViolation
       ? `Workflow ${workflow.type} completed with strict-output violation (${strictViolation}). Marked failed.`
-      : `Workflow ${workflow.type} completed (${outcome}, confidence=${confidence.toFixed(2)}).`,
+      : `Workflow ${workflow.type} completed (${outcome}, confidence=${confidence.toFixed(2)}, q=${qualityScore}).`,
     strictViolation ? "error" : "info",
   );
+
+  if (workflow.mutationCount > 0) {
+    activePreflight = null;
+    latestPostflight = null;
+  }
 }
 
 async function handleDebug(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
@@ -1427,6 +1729,7 @@ async function handleDebug(pi: ExtensionAPI, args: string, ctx: ExtensionCommand
     `Apply fix: ${applyFixMode}`,
     "",
     debugInstruction,
+    POSTFLIGHT_INSTRUCTION,
     "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`. Missing either line is treated as failed.",
   ]);
   pi.appendEntry("pesap-debug-command", {
@@ -1470,6 +1773,7 @@ async function handleFeature(pi: ExtensionAPI, args: string, ctx: ExtensionComma
     subagentAvailable
       ? "Instruction: Use parallel subagents for implementation/tests/docs when that reduces delivery time or risk."
       : "Instruction: pi-subagents is not installed in this session, run implementation/tests/docs sequentially without subagent delegation.",
+    POSTFLIGHT_INSTRUCTION,
     "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`. Missing either line is treated as failed.",
   ]);
   pi.appendEntry("pesap-feature-command", {
@@ -1531,6 +1835,7 @@ async function handleReview(pi: ExtensionAPI, args: string, ctx: ExtensionComman
         ].join("\n")
       : "",
     "Instruction: Prioritize correctness, security, performance, and maintainability findings with concrete evidence.",
+    POSTFLIGHT_INSTRUCTION,
     "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`. Missing either line is treated as failed.",
   ]);
 
@@ -1567,6 +1872,7 @@ async function handleGitReview(pi: ExtensionAPI, args: string, ctx: ExtensionCom
     "Instruction: Run the git diagnostics from the prompt before reading code.",
     extraFocus ? `Additional focus: ${extraFocus}` : "",
     "Instruction: Compare churn, authorship, bug clusters, velocity, and firefighting signals.",
+    POSTFLIGHT_INSTRUCTION,
     "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`. Missing either line is treated as failed.",
   ]);
 
@@ -1609,6 +1915,7 @@ async function handleSimplify(pi: ExtensionAPI, args: string, ctx: ExtensionComm
     `Instruction: ${target.instruction}`,
     parsed.extraInstruction ? `Additional focus: ${parsed.extraInstruction}` : "",
     "Instruction: Preserve exact behavior, API shape, and outputs. Ask before any semantic change.",
+    POSTFLIGHT_INSTRUCTION,
     "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`. Missing either line is treated as failed.",
   ]);
 
@@ -1687,6 +1994,7 @@ async function handleLearnSkill(pi: ExtensionAPI, args: string, ctx: ExtensionCo
       : "",
     "",
     "Instruction: Keep the skill concise and include explicit 'Use when' and 'Avoid when' sections.",
+    POSTFLIGHT_INSTRUCTION,
     "Instruction: End your final response with `Result: success|partial|failed` and `Confidence: <0..1>`. Missing either line is treated as failed.",
   ]);
 
@@ -1734,17 +2042,26 @@ export default function pesapExtension(pi: ExtensionAPI): void {
   pi.registerTool(bashTool);
   pi.on("session_start", async (_event, ctx) => {
     const paths = await ensureLearningStore(ctx.cwd);
-    const hookConfig = await loadHooksConfig();
+    const [hookConfig, gateConfig] = await Promise.all([loadHooksConfig(), loadFirstPrinciplesConfig()]);
     activeHookConfig = hookConfig.config;
+    firstPrinciplesConfig = gateConfig.config;
 
     for (const warning of hookConfig.warnings) {
       notify(ctx, `Hook config warning: ${warning}`, "warning");
     }
+    for (const warning of gateConfig.warnings) {
+      notify(ctx, `Gate config warning: ${warning}`, "warning");
+    }
 
     riskApproval = getRiskApprovalFromSession(ctx);
+    activePreflight = getPreflightFromSession(ctx);
     agentEnabled = getAgentEnabledFromSession(ctx);
     setAgentEnabledState(ctx, agentEnabled);
-    notify(ctx, `pesap-agent path: ${paths.root}`, "info");
+    notify(
+      ctx,
+      `pesap-agent path: ${paths.root} (preflight=${firstPrinciplesConfig.preflightMode}, postflight=${firstPrinciplesConfig.postflightMode})`,
+      "info",
+    );
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
@@ -1761,6 +2078,68 @@ export default function pesapExtension(pi: ExtensionAPI): void {
     return {
       systemPrompt: `${event.systemPrompt.trimEnd()}\n\n${bootstrap}`,
     };
+  });
+
+  pi.on("input", async (event, _ctx) => {
+    const text = typeof event.text === "string" ? event.text.trim() : "";
+    if (!text) return;
+
+    const preflight = parsePreflightLine(text);
+    if (preflight) {
+      activePreflight = preflight;
+      pi.appendEntry(PREFLIGHT_STATE_TYPE, preflight);
+      return;
+    }
+
+    const postflight = parsePostflightLine(text);
+    if (postflight) {
+      latestPostflight = postflight;
+      pi.appendEntry(POSTFLIGHT_EVENT_TYPE, postflight);
+    }
+  });
+
+  pi.on("tool_call", async (event, ctx) => {
+    if (!agentEnabled) return;
+
+    const input = event.input as Record<string, unknown>;
+    if (!isMutationToolCall(event.toolName, input)) return;
+
+    if (pendingWorkflow) pendingWorkflow.mutationCount += 1;
+
+    const violation = !activePreflight;
+    const outcome = modeOutcome(firstPrinciplesConfig.preflightMode, violation);
+    const detail = violation
+      ? "Missing valid preflight before mutation."
+      : `Using ${activePreflight.source} preflight: ${buildPreflightRawLine(activePreflight)}`;
+
+    addPolicyEvent(pi, {
+      at: nowIso(),
+      phase: "preflight",
+      mode: firstPrinciplesConfig.preflightMode,
+      outcome,
+      detail,
+      toolName: event.toolName,
+    });
+
+    if (outcome === "warn") {
+      const warning = `Policy warning (${event.toolName}): ${detail}`;
+      pendingWorkflow?.policyWarnings.push(warning);
+      notify(ctx, warning, "warning");
+      return;
+    }
+
+    if (outcome === "block") {
+      return {
+        block: true,
+        reason: [
+          `Policy blocked ${event.toolName}.`,
+          "Missing valid preflight before first mutation.",
+          "Run:",
+          "  /preflight Preflight: skill=<name|none> reason=\"<short>\" clarify=<yes|no>",
+          "Remediate and retry.",
+        ].join("\n"),
+      };
+    }
   });
 
   pi.on("agent_end", async (event, ctx) => {
@@ -1824,6 +2203,34 @@ export default function pesapExtension(pi: ExtensionAPI): void {
       notify(ctx, `Risk approval recorded until ${expiresAt}.`, "success");
     },
   });
+  pi.registerCommand("preflight", {
+    description: "Set mutation intent line for first-principles gate",
+    handler: async (args, ctx) => {
+      const parsed = parsePreflightArgs(args ?? "");
+      if (parsed.error || !parsed.record) {
+        notify(ctx, parsed.error ?? "Invalid preflight.", "error");
+        return;
+      }
+      activePreflight = parsed.record;
+      pi.appendEntry(PREFLIGHT_STATE_TYPE, parsed.record);
+      notify(ctx, `Preflight recorded (${parsed.record.skill}).`, "success");
+    },
+  });
+
+  pi.registerCommand("postflight", {
+    description: "Record verification evidence line for first-principles gate",
+    handler: async (args, ctx) => {
+      const parsed = parsePostflightArgs(args ?? "");
+      if (parsed.error || !parsed.record) {
+        notify(ctx, parsed.error ?? "Invalid postflight.", "error");
+        return;
+      }
+      latestPostflight = parsed.record;
+      pi.appendEntry(POSTFLIGHT_EVENT_TYPE, parsed.record);
+      notify(ctx, `Postflight recorded (${parsed.record.result}).`, "success");
+    },
+  });
+
   pi.registerCommand("debug", {
     description: "Run the pesap debug workflow",
     handler: async (args, ctx) => {

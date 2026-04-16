@@ -12,4 +12,5 @@ Requirements:
 - Provide an overall verdict: `correct` or `needs attention`.
 - End with a section: `Human Reviewer Callouts (Non-Blocking)`.
 - If there are no issues, explicitly say the change looks good.
+- If you mutate files (`edit`, `write`, or mutating `bash`), include: `Postflight: verify="<command_or_check>" result=<pass|fail|not-run>`.
 - End with: review summary, key findings, verdict, callouts, `Result: success|partial|failed`, and `Confidence: 0..1`.

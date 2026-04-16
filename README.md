@@ -19,6 +19,8 @@ pi -e https://github.com/pesap/agents
 - `/start-agent` - initialize pesap-agent context injection in the current session
 - `/end-agent` - stop pesap-agent context injection in the current session
 - `/approve-risk <reason> [--ttl MINUTES]` - record temporary checker approval required for one high-risk shell action
+- `/preflight Preflight: skill=<name|none> reason="<short>" clarify=<yes|no>` - record explicit mutation intent (required when preflight mode is `enforce`)
+- `/postflight Postflight: verify="<command_or_check>" result=<pass|fail|not-run>` - record verification evidence after mutation
 - `/debug <problem> [--parallel N] [--fix]` (auto-initializes the agent if needed, and parallel delegation falls back to single-agent mode when pi-subagents is unavailable)
 - `/feature <request> [--parallel N] [--ship]` (auto-initializes the agent if needed, and parallel delegation falls back to single-agent mode when pi-subagents is unavailable)
 - `/learn-skill <topic> [--from <path|url>] [--from-file path] [--from-url url] [--dry-run]`
@@ -45,6 +47,7 @@ When pesap-agent is enabled (`/start-agent`, or auto-enabled by workflow command
 - `python -m pip|venv|py_compile` → blocked with actionable alternatives
 - path-qualified Python executables (e.g. `/usr/bin/python3`, `.venv/bin/python`) → blocked to prevent interception bypass
 - high-risk destructive or sensitive shell commands (e.g. `rm -rf`, `git reset --hard`, force-push, obvious secret reads) → blocked unless checker approval is recorded via `/approve-risk`
+- first-principles mutation gate checks `edit`, `write`, and mutation-capable `bash` calls for preflight intent and postflight evidence (mode controlled by `agent/compliance/first-principles-gate.yaml`)
 
 Run `/end-agent` to disable this interception for the current session.
 Teardown lifecycle hooks run on both `/end-agent` and `session_shutdown`.
@@ -74,7 +77,7 @@ Stored artifacts:
 ## Compliance baseline
 
 - `agent/DUTIES.md` - maker/checker separation and escalation boundaries
-- `agent/compliance/` - risk profile, capability controls, and review cadence
+- `agent/compliance/` - risk profile, capability controls, and review cadence (`first-principles-gate.yaml` included)
 - `agent/hooks/` - lifecycle hook policy that is loaded and enforced at runtime (`on_session_start`, `pre_risky_action`, `on_session_end`)
 - `agent/memory/runtime/live/` - `dailylog.md`, `key-decisions.md`, `context.md`
 - `agent/tools/search.yaml` + `agent/tools/capability/search.yaml` - tool schema and capability mapping

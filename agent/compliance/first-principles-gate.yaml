@@ -1,0 +1,6 @@
+# First-principles mutation gate
+# monitor: log only
+# warn: allow + warning
+# enforce: block/fail
+preflight_mode: warn
+postflight_mode: warn

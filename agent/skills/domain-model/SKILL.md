@@ -3,6 +3,9 @@ name: domain-model
 description: Run a domain-model grilling session that challenges plans against existing terminology, code reality, and documented decisions. Use when users want to stress-test a design, sharpen domain language, and update CONTEXT.md/ADRs as decisions become clear.
 ---
 
+## Source
+- Adapted from: https://github.com/mattpocock/skills/tree/main/domain-model
+
 ## Use when
 - User wants to validate a plan against domain language and boundaries.
 - User asks for domain modeling, terminology alignment, or context mapping.

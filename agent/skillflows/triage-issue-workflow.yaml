@@ -1,0 +1,18 @@
+name: triage-issue-workflow
+version: 1
+objective: Investigate a bug, identify root cause, and file a durable TDD fix-plan issue
+steps:
+  - id: capture
+    action: capture_problem_statement
+  - id: investigate
+    action: trace_code_paths_tests_and_recent_changes
+  - id: root-cause
+    action: identify_durable_fix_direction
+  - id: plan
+    action: draft_red_green_tdd_cycles
+  - id: publish
+    action: create_issue_with_problem_root_cause_and_tdd_plan
+  - id: summarize
+    action: report_issue_url_and_risks
+  - id: learn
+    action: persist_learnings

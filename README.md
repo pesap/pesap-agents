@@ -31,8 +31,12 @@ pi -e https://github.com/pesap/agents
 - `/simplify [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>|file <paths...>|<paths...>] [--extra "focus"]` (code simplification workflow, behavior-preserving)
 - `/remove-slop [scope] [--parallel N]` (parallel code-quality cleanup workflow with mandatory safety/NASA guardrails and language-aware skill selection)
 - `/domain-model <plan_or_topic>` (domain-model grilling workflow that aligns terminology with code and updates CONTEXT/ADR docs lazily)
+- `/to-prd [context]` (synthesize current context into PRD markdown and file as GitHub issue when possible)
+- `/to-issues [plan_or_issue]` (break a plan/PRD into dependency-aware vertical-slice GitHub issues)
+- `/triage-issue <problem_statement>` (investigate root cause and file a TDD fix-plan issue)
+- `/tdd <goal> [--lang auto|python|rust|c]` (strict red-green-refactor workflow using core + language adapter skills)
 
-### Run review/simplify/remove-slop/domain-model outside the REPL
+### Run workflow commands outside the REPL
 
 These commands also work in non-interactive runs (print mode or RPC), not only in the TUI REPL.
 
@@ -42,6 +46,10 @@ pi -e https://github.com/pesap/agents -p "/review folder src docs"
 pi -e https://github.com/pesap/agents -p "/simplify src/commands/review.ts"
 pi -e https://github.com/pesap/agents -p "/remove-slop src --parallel 8"
 pi -e https://github.com/pesap/agents -p "/domain-model 'Split billing and ordering contexts with async events'"
+pi -e https://github.com/pesap/agents -p "/to-prd 'Add audit trail for policy gate actions'"
+pi -e https://github.com/pesap/agents -p "/to-issues 'Implement audit trail from PRD #123'"
+pi -e https://github.com/pesap/agents -p "/triage-issue 'Intermittent timeout when loading policy config'"
+pi -e https://github.com/pesap/agents -p "/tdd 'Add retry policy for hook loading' --lang rust"
 ```
 ## Intercepted shell commands (active agent only)
 

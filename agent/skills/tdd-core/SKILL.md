@@ -3,6 +3,9 @@ name: tdd-core
 description: Apply language-agnostic test-driven development with strict red-green-refactor cycles, behavior-focused tests, and safe refactoring. Use when users ask for TDD, test-first implementation, or disciplined bugfix/feature delivery in any language.
 ---
 
+## Source
+- Adapted from: https://github.com/mattpocock/skills/tree/main/tdd
+
 ## Use when
 - User asks for TDD or test-first development.
 - User wants safer feature work or bug fixes with incremental validation.

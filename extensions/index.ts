@@ -39,7 +39,7 @@ const FIRST_PRINCIPLES_CONFIG_PATH = path.join(AGENT_DIR, "compliance", "first-p
 const PREFLIGHT_STATE_TYPE = "pesap-preflight-state";
 const POSTFLIGHT_EVENT_TYPE = "pesap-postflight-event";
 const POLICY_EVENT_TYPE = "pesap-policy-event";
-type WorkflowType = "debug" | "feature" | "review" | "git-review" | "simplify" | "learn-skill" | "remove-slop" | "domain-model";
+type WorkflowType = "debug" | "feature" | "review" | "git-review" | "simplify" | "learn-skill" | "remove-slop" | "domain-model" | "to-prd" | "to-issues" | "triage-issue" | "tdd";
 type WorkflowOutcome = "success" | "partial" | "failed";
 type WorkflowFlagValue = string | number | boolean | null | string[];
 type WorkflowFlags = Record<string, WorkflowFlagValue>;
@@ -57,6 +57,10 @@ const REVIEW_COMMAND_SOURCE = "https://github.com/earendil-works/pi-review";
 const GIT_REVIEW_COMMAND_SOURCE = "https://piechowski.io/post/git-commands-before-reading-code/";
 const SIMPLIFY_COMMAND_SOURCE = "https://github.com/anthropics/claude-plugins-official/blob/main/plugins/code-simplifier/agents/code-simplifier.md";
 const DOMAIN_MODEL_COMMAND_SOURCE = "https://github.com/mattpocock/skills/tree/main/domain-model";
+const TO_PRD_COMMAND_SOURCE = "https://github.com/mattpocock/skills/tree/main/to-prd";
+const TO_ISSUES_COMMAND_SOURCE = "https://github.com/mattpocock/skills/tree/main/to-issues";
+const TRIAGE_ISSUE_COMMAND_SOURCE = "https://github.com/mattpocock/skills/tree/main/triage-issue";
+const TDD_COMMAND_SOURCE = "https://github.com/mattpocock/skills/tree/main/tdd";
 type ParsedReviewArgs =
   | { mode: "uncommitted"; extraInstruction?: string }
   | { mode: "branch"; branch: string; extraInstruction?: string }
@@ -384,7 +388,7 @@ function isWorkflowType(value: unknown): value is WorkflowType {
     || value === "review"
     || value === "git-review"
     || value === "simplify"
-    || value === "learn-skill" || value === "remove-slop" || value === "domain-model";
+    || value === "learn-skill" || value === "remove-slop" || value === "domain-model" || value === "to-prd" || value === "to-issues" || value === "triage-issue" || value === "tdd";
 }
 
 function isWorkflowOutcome(value: unknown): value is WorkflowOutcome {
@@ -1067,6 +1071,33 @@ function parseRemoveSlopArgs(args: string): { scope: string; parallel: number } 
 
 function parseDomainModelArgs(args: string): { plan: string } {
   return { plan: normalizeWhitespace(args) };
+}
+
+function parseToPrdArgs(args: string): { context: string } {
+  const context = normalizeWhitespace(args);
+  return { context: context || "current conversation context" };
+}
+
+function parseToIssuesArgs(args: string): { source: string } {
+  const source = normalizeWhitespace(args);
+  return { source: source || "current conversation context" };
+}
+
+function parseTriageIssueArgs(args: string): { problem: string } {
+  return { problem: normalizeWhitespace(args) };
+}
+
+function parseTddArgs(args: string): { goal: string; language: string } {
+  let rest = normalizeWhitespace(args);
+
+  const languageResult = removeFlag(rest, /(^|\s)--lang\s+(\S+)(\s|$)/);
+  rest = languageResult.value;
+  const language = normalizeWhitespace(languageResult.match?.[2] ?? "auto").toLowerCase();
+
+  return {
+    goal: rest,
+    language: language || "auto",
+  };
 }
 function parseLearnSkillArgs(args: string): {
   topic: string;
@@ -2254,6 +2285,133 @@ async function handleDomainModel(pi: ExtensionAPI, args: string, ctx: ExtensionC
 
   notify(ctx, `Started domain-model workflow (${parsed.plan}).`, "info");
 }
+
+async function handleToPrd(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
+  const parsed = parseToPrdArgs(args);
+  if (!ensureWorkflowSlotAvailable(ctx)) return;
+
+  ensureAgentEnabledForCommand(pi, ctx, "to-prd");
+
+  await beginWorkflowTracking(pi, ctx, "to-prd", parsed.context, {
+    source: TO_PRD_COMMAND_SOURCE,
+  });
+
+  await enqueueWorkflow(pi, "to-prd-workflow.md", "to-prd-workflow.yaml", [
+    `PRD source context: ${parsed.context}`,
+    `Source reference: ${TO_PRD_COMMAND_SOURCE}`,
+    "",
+    "Instruction: Synthesize from current conversation and repository context. Do not run a long interview.",
+    "Instruction: Create a GitHub issue with the PRD when possible; otherwise provide markdown fallback and reason.",
+    POSTFLIGHT_INSTRUCTION,
+    REQUIRED_WORKFLOW_FOOTER_INSTRUCTION,
+  ]);
+
+  pi.appendEntry("pesap-to-prd-command", {
+    context: parsed.context,
+    source: TO_PRD_COMMAND_SOURCE,
+    at: nowIso(),
+  });
+
+  notify(ctx, `Started to-prd workflow (${parsed.context}).`, "info");
+}
+
+async function handleToIssues(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
+  const parsed = parseToIssuesArgs(args);
+  if (!ensureWorkflowSlotAvailable(ctx)) return;
+
+  ensureAgentEnabledForCommand(pi, ctx, "to-issues");
+
+  await beginWorkflowTracking(pi, ctx, "to-issues", parsed.source, {
+    source: TO_ISSUES_COMMAND_SOURCE,
+  });
+
+  await enqueueWorkflow(pi, "to-issues-workflow.md", "to-issues-workflow.yaml", [
+    `Issue source plan: ${parsed.source}`,
+    `Source reference: ${TO_ISSUES_COMMAND_SOURCE}`,
+    "",
+    "Instruction: Break work into thin vertical slices with AFK/HITL labels and dependency ordering.",
+    "Instruction: Review slice breakdown with the user once before creating issues.",
+    POSTFLIGHT_INSTRUCTION,
+    REQUIRED_WORKFLOW_FOOTER_INSTRUCTION,
+  ]);
+
+  pi.appendEntry("pesap-to-issues-command", {
+    sourceInput: parsed.source,
+    source: TO_ISSUES_COMMAND_SOURCE,
+    at: nowIso(),
+  });
+
+  notify(ctx, `Started to-issues workflow (${parsed.source}).`, "info");
+}
+
+async function handleTriageIssue(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
+  const parsed = parseTriageIssueArgs(args);
+  if (!ensureWorkflowSlotAvailable(ctx)) return;
+  if (!parsed.problem) {
+    notify(ctx, "Usage: /triage-issue <problem_statement>", "error");
+    return;
+  }
+
+  ensureAgentEnabledForCommand(pi, ctx, "triage-issue");
+
+  await beginWorkflowTracking(pi, ctx, "triage-issue", parsed.problem, {
+    source: TRIAGE_ISSUE_COMMAND_SOURCE,
+  });
+
+  await enqueueWorkflow(pi, "triage-issue-workflow.md", "triage-issue-workflow.yaml", [
+    `Problem statement: ${parsed.problem}`,
+    `Source reference: ${TRIAGE_ISSUE_COMMAND_SOURCE}`,
+    "",
+    "Instruction: Ask at most one initial clarification question if needed, then investigate immediately.",
+    "Instruction: Create a GitHub issue with durable root-cause analysis and RED/GREEN TDD fix plan.",
+    POSTFLIGHT_INSTRUCTION,
+    REQUIRED_WORKFLOW_FOOTER_INSTRUCTION,
+  ]);
+
+  pi.appendEntry("pesap-triage-issue-command", {
+    problem: parsed.problem,
+    source: TRIAGE_ISSUE_COMMAND_SOURCE,
+    at: nowIso(),
+  });
+
+  notify(ctx, `Started triage-issue workflow (${parsed.problem}).`, "info");
+}
+
+async function handleTdd(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
+  const parsed = parseTddArgs(args);
+  if (!ensureWorkflowSlotAvailable(ctx)) return;
+  if (!parsed.goal) {
+    notify(ctx, "Usage: /tdd <goal> [--lang auto|python|rust|c]", "error");
+    return;
+  }
+
+  ensureAgentEnabledForCommand(pi, ctx, "tdd");
+
+  await beginWorkflowTracking(pi, ctx, "tdd", parsed.goal, {
+    language: parsed.language,
+    source: TDD_COMMAND_SOURCE,
+  });
+
+  await enqueueWorkflow(pi, "tdd-workflow.md", "tdd-workflow.yaml", [
+    `TDD goal: ${parsed.goal}`,
+    `Language hint: ${parsed.language}`,
+    `Source reference: ${TDD_COMMAND_SOURCE}`,
+    "",
+    "Instruction: Use tdd-core doctrine and select language-specific adapter skill as needed.",
+    "Instruction: Execute strict red-green-refactor in vertical slices only.",
+    POSTFLIGHT_INSTRUCTION,
+    REQUIRED_WORKFLOW_FOOTER_INSTRUCTION,
+  ]);
+
+  pi.appendEntry("pesap-tdd-command", {
+    goal: parsed.goal,
+    language: parsed.language,
+    source: TDD_COMMAND_SOURCE,
+    at: nowIso(),
+  });
+
+  notify(ctx, `Started tdd workflow (goal=${parsed.goal}, lang=${parsed.language}).`, "info");
+}
 async function handleLearnSkill(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
   const parsed = parseLearnSkillArgs(args);
   if (!ensureWorkflowSlotAvailable(ctx)) return;
@@ -2629,6 +2787,34 @@ export default function pesapExtension(pi: ExtensionAPI): void {
     description: "Run domain-model grilling and context/ADR update workflow",
     handler: async (args, ctx) => {
       await handleDomainModel(pi, args ?? "", ctx);
+    },
+  });
+
+  pi.registerCommand("to-prd", {
+    description: "Convert current context into a PRD and file a GitHub issue",
+    handler: async (args, ctx) => {
+      await handleToPrd(pi, args ?? "", ctx);
+    },
+  });
+
+  pi.registerCommand("to-issues", {
+    description: "Break a plan/PRD into dependency-aware GitHub issues",
+    handler: async (args, ctx) => {
+      await handleToIssues(pi, args ?? "", ctx);
+    },
+  });
+
+  pi.registerCommand("triage-issue", {
+    description: "Investigate a bug and create a TDD fix-plan issue",
+    handler: async (args, ctx) => {
+      await handleTriageIssue(pi, args ?? "", ctx);
+    },
+  });
+
+  pi.registerCommand("tdd", {
+    description: "Run a strict red-green-refactor workflow",
+    handler: async (args, ctx) => {
+      await handleTdd(pi, args ?? "", ctx);
     },
   });
   pi.registerCommand("learn-skill", {

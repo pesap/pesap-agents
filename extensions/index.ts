@@ -148,8 +148,9 @@ interface RiskEvent {
   approved: boolean;
 }
 interface FirstPrinciplesConfig {
-  preflightMode: PolicyMode;
-  postflightMode: PolicyMode;
+ preflightMode: PolicyMode;
+ postflightMode: PolicyMode;
+  responseComplianceMode: PolicyMode;
 }
 interface PreflightRecord {
   at: string;
@@ -693,19 +694,20 @@ async function loadFirstPrinciplesConfig(): Promise<{ config: FirstPrinciplesCon
   const raw = await readTextIfExists(FIRST_PRINCIPLES_CONFIG_PATH);
   if (!raw.trim()) {
     return {
-      config: { preflightMode: "warn", postflightMode: "warn" },
+      config: { preflightMode: "warn", postflightMode: "warn", responseComplianceMode: "warn" },
       warnings: ["first-principles-gate.yaml missing or empty; using defaults (warn/warn)."],
     };
   }
 
   const warnings: string[] = [];
-  let preflightMode: PolicyMode | null = null;
-  let postflightMode: PolicyMode | null = null;
+ let preflightMode: PolicyMode | null = null;
+ let postflightMode: PolicyMode | null = null;
+  let responseComplianceMode: PolicyMode | null = null;
 
   for (const line of raw.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
-    const match = trimmed.match(/^(preflight_mode|postflight_mode):\s*([a-zA-Z_-]+)\s*$/);
+    const match = trimmed.match(/^(preflight_mode|postflight_mode|response_compliance):\s*([a-zA-Z_-]+)\s*$/);
     if (!match) continue;
 
     const mode = parsePolicyMode(match[2]);
@@ -714,14 +716,16 @@ async function loadFirstPrinciplesConfig(): Promise<{ config: FirstPrinciplesCon
       continue;
     }
 
-    if (match[1] === "preflight_mode") preflightMode = mode;
-    if (match[1] === "postflight_mode") postflightMode = mode;
+   if (match[1] === "preflight_mode") preflightMode = mode;
+   if (match[1] === "postflight_mode") postflightMode = mode;
+    if (match[1] === "response_compliance") responseComplianceMode = mode;
   }
 
   return {
     config: {
-      preflightMode: preflightMode ?? "warn",
-      postflightMode: postflightMode ?? "warn",
+     preflightMode: preflightMode ?? "warn",
+     postflightMode: postflightMode ?? "warn",
+      responseComplianceMode: responseComplianceMode ?? "warn",
     },
     warnings,
   };
@@ -2438,17 +2442,20 @@ export default function pesapExtension(pi: ExtensionAPI): void {
     const text = extractLastAssistantText(event.messages) || "No assistant output captured.";
 
     // Harness compliance enforcement (minimal)
-    if (firstPrinciplesConfig.postflightMode === "enforce") {
-      const hasResult = /Result:\s*(success|partial|failed)/i.test(text);
-      const hasConfidence = /Confidence:\s*[\d.]+/i.test(text);
+    if (firstPrinciplesConfig.responseComplianceMode === "enforce") {
+      const resultMatch = text.match(/^\s*Result:\s*(success|partial|failed)\s*$/mi);
+      const confidenceMatch = text.match(/^\s*Confidence:\s*([\d.]+)\s*$/mi);
+      const confidenceValue = confidenceMatch ? parseFloat(confidenceMatch[1]) : null;
+      const hasResult = resultMatch !== null;
+      const hasConfidence = confidenceValue !== null && confidenceValue >= 0 && confidenceValue <= 1;
       if (!hasResult || !hasConfidence) {
         return {
           block: true,
           reason: [
             "HARNESS COMPLIANCE FAILED",
             "",
-            hasResult ? "" : "Missing: Result: success|partial|failed",
-            hasConfidence ? "" : "Missing: Confidence: 0..1",
+            hasResult ? "" : "Missing or invalid: Result: success|partial|failed",
+            hasConfidence ? "" : (confidenceMatch ? "Invalid: Confidence must be 0..1" : "Missing: Confidence: 0..1"),
             "",
             "Add these lines to your response and retry.",
           ].filter(Boolean).join("\n"),

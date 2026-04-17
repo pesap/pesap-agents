@@ -29,7 +29,6 @@ pi -e https://github.com/pesap/agents
 - `/review [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>|file <paths...>|<paths...>] [--extra "focus"]` (adapted from `https://github.com/earendil-works/pi-review`)
 - `/git-review` - run git-history diagnostics before reading code (churn, authorship, bug clusters, velocity, firefighting)
 - `/simplify [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>|file <paths...>|<paths...>] [--extra "focus"]` (code simplification workflow, behavior-preserving)
-- `/reaview ...` - alias for `/review`
 
 ### Run review/simplify outside the REPL
 

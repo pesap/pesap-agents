@@ -1,6 +1,6 @@
 ---
 name: security-audit
-description: Audit code for security vulnerabilities including OWASP Top 10 and secrets exposure
+description: Audit code for security vulnerabilities including OWASP Top 10 and secrets exposure. Use when users ask for security review, hardening, or risk triage before shipping.
 license: MIT
 allowed-tools: Read Grep Glob Bash
 metadata:
@@ -11,8 +11,12 @@ metadata:
 
 # Security Audit
 
-## When to Use
+## Use when
 When reviewing code for security vulnerabilities, or when a change touches authentication, authorization, input handling, or data storage.
+
+## Avoid when
+- Task is pure feature implementation with no security scope.
+- User wants compliance/legal interpretation beyond code-level evidence.
 
 ## Instructions
 
@@ -25,3 +29,9 @@ When reviewing code for security vulnerabilities, or when a change touches authe
 7. **Dependency risks** — Note if new dependencies are added without lockfile updates or if known-vulnerable versions are used
 8. **Cryptography** — Flag weak algorithms (MD5, SHA1 for security), hardcoded IVs, ECB mode, custom crypto implementations
 9. **Report** — All security findings are Critical or Warning severity. Include CWE references where applicable
+
+## Output
+- Findings with severity and exploitability context
+- CWE/OWASP mapping when applicable
+- Evidence (file/line or command output)
+- Immediate remediation and follow-up hardening tasks

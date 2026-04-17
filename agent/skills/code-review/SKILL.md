@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Review code changes for bugs, performance issues, and best practice violations
+description: Review code changes for bugs, performance issues, and best-practice violations. Use when users ask for a PR/diff review, risk assessment, or actionable quality findings.
 license: MIT
 allowed-tools: Read Grep Glob Bash
 metadata:
@@ -11,8 +11,12 @@ metadata:
 
 # Code Review
 
-## When to Use
+## Use when
 When reviewing a pull request, diff, or set of code changes.
+
+## Avoid when
+- User asks for implementation work instead of review.
+- Scope has no concrete diff/target files to assess.
 
 ## Instructions
 
@@ -23,3 +27,9 @@ When reviewing a pull request, diff, or set of code changes.
 5. **Check readability** — Naming, code structure, comments where non-obvious, function length
 6. **Check tests** — Are there tests? Do they cover edge cases? Are they testing behavior or implementation?
 7. **Report findings** — Group by file, categorize by severity (Critical/Warning/Suggestion/Nit), include line references and suggested fixes
+
+## Output
+- Prioritized findings by severity (Critical/Warning/Suggestion/Nit)
+- File/line evidence for each finding
+- Concrete fix guidance
+- Residual risks and follow-up checks

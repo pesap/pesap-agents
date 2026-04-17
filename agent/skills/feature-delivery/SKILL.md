@@ -1,12 +1,16 @@
 ---
 name: feature-delivery
-description: Deliver features from acceptance criteria to validated implementation
+description: Deliver features from acceptance criteria to validated implementation. Use when users ask for new functionality, scoped enhancements, or end-to-end delivery with tests.
 ---
 
 ## Use when
 - The user asks for a new feature or enhancement.
 
-## Steps
+## Avoid when
+- Task is pure debugging/review with no feature scope.
+- Requirements are intentionally open-ended and user does not want scoping.
+
+## Workflow
 1. Clarify acceptance criteria.
 2. Plan minimal implementation.
 3. Implement incrementally.

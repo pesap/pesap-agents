@@ -35,6 +35,7 @@ pi -e https://github.com/pesap/agents
 - `/to-issues [plan_or_issue]` (break a plan/PRD into dependency-aware vertical-slice GitHub issues)
 - `/triage-issue <problem_statement>` (investigate root cause and file a TDD fix-plan issue)
 - `/tdd <goal> [--lang auto|python|rust|c]` (strict red-green-refactor workflow using core + language adapter skills)
+- `/address-open-issues [--limit N] [--repo owner/repo]` (process your open issues through triage, TDD, review, simplify, re-review, and remediation loops)
 
 ### Run workflow commands outside the REPL
 
@@ -50,6 +51,7 @@ pi -e https://github.com/pesap/agents -p "/to-prd 'Add audit trail for policy ga
 pi -e https://github.com/pesap/agents -p "/to-issues 'Implement audit trail from PRD #123'"
 pi -e https://github.com/pesap/agents -p "/triage-issue 'Intermittent timeout when loading policy config'"
 pi -e https://github.com/pesap/agents -p "/tdd 'Add retry policy for hook loading' --lang rust"
+pi -e https://github.com/pesap/agents -p "/address-open-issues --limit 10"
 ```
 ## Intercepted shell commands (active agent only)
 

@@ -39,7 +39,7 @@ const FIRST_PRINCIPLES_CONFIG_PATH = path.join(AGENT_DIR, "compliance", "first-p
 const PREFLIGHT_STATE_TYPE = "pesap-preflight-state";
 const POSTFLIGHT_EVENT_TYPE = "pesap-postflight-event";
 const POLICY_EVENT_TYPE = "pesap-policy-event";
-type WorkflowType = "debug" | "feature" | "review" | "git-review" | "simplify" | "learn-skill" | "remove-slop" | "domain-model" | "to-prd" | "to-issues" | "triage-issue" | "tdd";
+type WorkflowType = "debug" | "feature" | "review" | "git-review" | "simplify" | "learn-skill" | "remove-slop" | "domain-model" | "to-prd" | "to-issues" | "triage-issue" | "tdd" | "address-open-issues";
 type WorkflowOutcome = "success" | "partial" | "failed";
 type WorkflowFlagValue = string | number | boolean | null | string[];
 type WorkflowFlags = Record<string, WorkflowFlagValue>;
@@ -61,6 +61,7 @@ const TO_PRD_COMMAND_SOURCE = "https://github.com/mattpocock/skills/tree/main/to
 const TO_ISSUES_COMMAND_SOURCE = "https://github.com/mattpocock/skills/tree/main/to-issues";
 const TRIAGE_ISSUE_COMMAND_SOURCE = "https://github.com/mattpocock/skills/tree/main/triage-issue";
 const TDD_COMMAND_SOURCE = "https://github.com/mattpocock/skills/tree/main/tdd";
+const ADDRESS_OPEN_ISSUES_COMMAND_SOURCE = "pesap://workflow/address-open-issues";
 type ParsedReviewArgs =
   | { mode: "uncommitted"; extraInstruction?: string }
   | { mode: "branch"; branch: string; extraInstruction?: string }
@@ -388,7 +389,7 @@ function isWorkflowType(value: unknown): value is WorkflowType {
     || value === "review"
     || value === "git-review"
     || value === "simplify"
-    || value === "learn-skill" || value === "remove-slop" || value === "domain-model" || value === "to-prd" || value === "to-issues" || value === "triage-issue" || value === "tdd";
+    || value === "learn-skill" || value === "remove-slop" || value === "domain-model" || value === "to-prd" || value === "to-issues" || value === "triage-issue" || value === "tdd" || value === "address-open-issues";
 }
 
 function isWorkflowOutcome(value: unknown): value is WorkflowOutcome {
@@ -554,6 +555,7 @@ async function ensureFile(filePath: string, initialContent: string): Promise<voi
 }
 
 async function appendLine(filePath: string, line: string): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.appendFile(filePath, `${line}\n`, "utf8");
 }
 
@@ -1099,6 +1101,21 @@ function parseTddArgs(args: string): { goal: string; language: string } {
     language: language || "auto",
   };
 }
+
+function parseAddressOpenIssuesArgs(args: string): { limit: number; repo: string } {
+  let rest = normalizeWhitespace(args);
+
+  const limitResult = removeFlag(rest, /(^|\s)--limit\s+(\d+)(\s|$)/);
+  rest = limitResult.value;
+  const limitRaw = Number(limitResult.match?.[2] ?? 20);
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 20;
+
+  const repoResult = removeFlag(rest, /(^|\s)--repo\s+(\S+)(\s|$)/);
+  const repo = normalizeWhitespace(repoResult.match?.[2] ?? "");
+
+  return { limit, repo };
+}
+
 function parseLearnSkillArgs(args: string): {
   topic: string;
   fromFile?: string;
@@ -2412,6 +2429,48 @@ async function handleTdd(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 
   notify(ctx, `Started tdd workflow (goal=${parsed.goal}, lang=${parsed.language}).`, "info");
 }
+
+async function handleAddressOpenIssues(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
+  const parsed = parseAddressOpenIssuesArgs(args);
+  if (!ensureWorkflowSlotAvailable(ctx)) return;
+
+  ensureAgentEnabledForCommand(pi, ctx, "address-open-issues");
+
+  await beginWorkflowTracking(pi, ctx, "address-open-issues", `open issues by me (limit=${parsed.limit})`, {
+    limit: parsed.limit,
+    repo: parsed.repo || null,
+    source: ADDRESS_OPEN_ISSUES_COMMAND_SOURCE,
+  });
+
+  await enqueueWorkflow(pi, "address-open-issues-workflow.md", "address-open-issues-workflow.yaml", [
+    "Issue query: author:@me state:open",
+    `Limit: ${parsed.limit}`,
+    `Repo override: ${parsed.repo || "(current repo)"}`,
+    `Source reference: ${ADDRESS_OPEN_ISSUES_COMMAND_SOURCE}`,
+    "",
+    "Instruction: Skip issues labeled blocked (or equivalent blocked label) and mark them skipped-blocked.",
+    "Instruction: If an issue description is unclear/incomplete, post a clarification comment tagging the issue creator and abort remaining stages for that issue.",
+    "Instruction: For well-described issues, run stages in order: triage-issue -> tdd -> review -> simplify -> review -> address review findings.",
+    "Instruction: Re-review after remediation up to 2 loops per issue, then mark blocked if unresolved."
+    POSTFLIGHT_INSTRUCTION,
+    REQUIRED_WORKFLOW_FOOTER_INSTRUCTION,
+  ]);
+
+  pi.appendEntry("pesap-address-open-issues-command", {
+    limit: parsed.limit,
+    repo: parsed.repo || null,
+    source: ADDRESS_OPEN_ISSUES_COMMAND_SOURCE,
+    at: nowIso(),
+  });
+
+  notify(
+    ctx,
+    `Started address-open-issues workflow (limit=${parsed.limit}, repo=${parsed.repo || "current"}).`,
+    "info",
+  );
+}
+
+
 async function handleLearnSkill(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
   const parsed = parseLearnSkillArgs(args);
   if (!ensureWorkflowSlotAvailable(ctx)) return;
@@ -2817,6 +2876,15 @@ export default function pesapExtension(pi: ExtensionAPI): void {
       await handleTdd(pi, args ?? "", ctx);
     },
   });
+
+  pi.registerCommand("address-open-issues", {
+    description: "Sweep open issues authored by you through triage, TDD, review, and remediation",
+    handler: async (args, ctx) => {
+      await handleAddressOpenIssues(pi, args ?? "", ctx);
+    },
+  });
+
+
   pi.registerCommand("learn-skill", {
     description: "Create and refine a reusable skill",
     handler: async (args, ctx) => {

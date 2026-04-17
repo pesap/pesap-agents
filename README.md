@@ -29,8 +29,9 @@ pi -e https://github.com/pesap/agents
 - `/review [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>|file <paths...>|<paths...>] [--extra "focus"]` (adapted from `https://github.com/earendil-works/pi-review`)
 - `/git-review` - run git-history diagnostics before reading code (churn, authorship, bug clusters, velocity, firefighting)
 - `/simplify [uncommitted|branch <name>|commit <sha>|pr <number|url>|folder <paths...>|file <paths...>|<paths...>] [--extra "focus"]` (code simplification workflow, behavior-preserving)
+- `/remove-slop [scope] [--parallel N]` (parallel code-quality cleanup workflow with mandatory safety/NASA guardrails and language-aware skill selection)
 
-### Run review/simplify outside the REPL
+### Run review/simplify/remove-slop outside the REPL
 
 These commands also work in non-interactive runs (print mode or RPC), not only in the TUI REPL.
 
@@ -38,6 +39,7 @@ These commands also work in non-interactive runs (print mode or RPC), not only i
 pi -e https://github.com/pesap/agents -p "/review README.md --extra 'focus on correctness'"
 pi -e https://github.com/pesap/agents -p "/review folder src docs"
 pi -e https://github.com/pesap/agents -p "/simplify src/commands/review.ts"
+pi -e https://github.com/pesap/agents -p "/remove-slop src --parallel 8"
 ```
 ## Intercepted shell commands (active agent only)
 

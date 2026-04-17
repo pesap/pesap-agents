@@ -20,6 +20,7 @@ const INTERCEPTED_COMMANDS_DIR = path.join(PACKAGE_ROOT, "intercepted-commands")
 const AGENT_STATE_TYPE = "pesap-agent-state";
 const DEFAULT_DEBUG_PARALLEL = 3;
 const DEFAULT_FEATURE_PARALLEL = 2;
+const DEFAULT_REMOVE_SLOP_PARALLEL = 8;
 const LEARNING_STORE_DIRNAME = "pesap-agent";
 const LEARNING_VERSION = 1;
 const MEMORY_TAIL_LINES = 20;
@@ -38,7 +39,7 @@ const FIRST_PRINCIPLES_CONFIG_PATH = path.join(AGENT_DIR, "compliance", "first-p
 const PREFLIGHT_STATE_TYPE = "pesap-preflight-state";
 const POSTFLIGHT_EVENT_TYPE = "pesap-postflight-event";
 const POLICY_EVENT_TYPE = "pesap-policy-event";
-type WorkflowType = "debug" | "feature" | "review" | "git-review" | "simplify" | "learn-skill";
+type WorkflowType = "debug" | "feature" | "review" | "git-review" | "simplify" | "learn-skill" | "remove-slop";
 type WorkflowOutcome = "success" | "partial" | "failed";
 type WorkflowFlagValue = string | number | boolean | null | string[];
 type WorkflowFlags = Record<string, WorkflowFlagValue>;
@@ -381,7 +382,7 @@ function isWorkflowType(value: unknown): value is WorkflowType {
     || value === "review"
     || value === "git-review"
     || value === "simplify"
-    || value === "learn-skill";
+    || value === "learn-skill" || value === "remove-slop";
 }
 
 function isWorkflowOutcome(value: unknown): value is WorkflowOutcome {
@@ -1043,6 +1044,19 @@ function parseFeatureArgs(args: string): { request: string; parallel: number; sh
     request: rest,
     parallel: Number.isFinite(parallel) && parallel > 0 ? parallel : DEFAULT_FEATURE_PARALLEL,
     ship,
+  };
+}
+
+function parseRemoveSlopArgs(args: string): { scope: string; parallel: number } {
+  let rest = normalizeWhitespace(args);
+
+  const parallelResult = removeFlag(rest, /(^|\s)--parallel\s+(\d+)(\s|$)/);
+  rest = parallelResult.value;
+  const parallel = Number(parallelResult.match?.[2] ?? DEFAULT_REMOVE_SLOP_PARALLEL);
+
+  return {
+    scope: rest || "current repository",
+    parallel: Number.isFinite(parallel) && parallel > 0 ? parallel : DEFAULT_REMOVE_SLOP_PARALLEL,
   };
 }
 
@@ -2154,6 +2168,51 @@ async function handleSimplify(pi: ExtensionAPI, args: string, ctx: ExtensionComm
   notify(ctx, `Started simplify workflow (${target.summary}).`, "info");
 }
 
+async function handleRemoveSlop(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
+  const parsed = parseRemoveSlopArgs(args);
+  if (!ensureWorkflowSlotAvailable(ctx)) return;
+
+  ensureAgentEnabledForCommand(pi, ctx, "remove-slop");
+
+  const subagentAvailable = hasSubagentTool(pi);
+  const parallelTarget = subagentAvailable ? parsed.parallel : 1;
+
+  await beginWorkflowTracking(pi, ctx, "remove-slop", parsed.scope, {
+    scope: parsed.scope,
+    parallel: parallelTarget,
+    subagentAvailable,
+  });
+
+  await enqueueWorkflow(pi, "remove-slop-workflow.md", "remove-slop-workflow.yaml", [
+    `Cleanup scope: ${parsed.scope}`,
+    `Parallel subagents target: ${parallelTarget}`,
+    "",
+    subagentAvailable
+      ? "Instruction: Run 8 analysis tracks in parallel, then implement approved items sequentially."
+      : "Instruction: pi-subagents is not installed in this session, run the 8 analysis tracks sequentially.",
+    "Instruction: Select language-aware skills based on the codebase stack. Mention missing useful skills if any.",
+    POSTFLIGHT_INSTRUCTION,
+    REQUIRED_WORKFLOW_FOOTER_INSTRUCTION,
+  ]);
+
+  pi.appendEntry("pesap-remove-slop-command", {
+    scope: parsed.scope,
+    parallel: parallelTarget,
+    subagentAvailable,
+    at: nowIso(),
+  });
+
+  if (!subagentAvailable) {
+    notify(ctx, "pi-subagents not detected, running /remove-slop in single-agent mode.", "warning");
+  }
+
+  notify(
+    ctx,
+    `Started remove-slop workflow (scope=${parsed.scope}, parallel=${parallelTarget}, subagents=${subagentAvailable ? "on" : "off"}).`,
+    "info",
+  );
+}
+
 async function handleLearnSkill(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<void> {
   const parsed = parseLearnSkillArgs(args);
   if (!ensureWorkflowSlotAvailable(ctx)) return;
@@ -2492,6 +2551,13 @@ export default function pesapExtension(pi: ExtensionAPI): void {
     description: "Run the pesap code simplification workflow",
     handler: async (args, ctx) => {
       await handleSimplify(pi, args ?? "", ctx);
+    },
+  });
+
+  pi.registerCommand("remove-slop", {
+    description: "Run the pesap cleanup and code-quality workflow",
+    handler: async (args, ctx) => {
+      await handleRemoveSlop(pi, args ?? "", ctx);
     },
   });
 

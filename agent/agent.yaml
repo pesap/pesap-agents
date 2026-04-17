@@ -27,6 +27,12 @@ skills:
   - academic-review
   - arco-optimization
   - skill-creator
+  - nasa-guidelines
+  - dead-code-proof
+  - dependency-untangler
+  - type-hardening
+  - comment-quality-gate
+  - public-api-guard
   - create-pisubagents
   - caveman
   - infrasys-integration

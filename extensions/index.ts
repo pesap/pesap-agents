@@ -2436,6 +2436,26 @@ export default function pesapExtension(pi: ExtensionAPI): void {
     pendingWorkflow = null;
 
     const text = extractLastAssistantText(event.messages) || "No assistant output captured.";
+
+    // Harness compliance enforcement (minimal)
+    if (firstPrinciplesConfig.postflightMode === "enforce") {
+      const hasResult = /Result:\s*(success|partial|failed)/i.test(text);
+      const hasConfidence = /Confidence:\s*[\d.]+/i.test(text);
+      if (!hasResult || !hasConfidence) {
+        return {
+          block: true,
+          reason: [
+            "HARNESS COMPLIANCE FAILED",
+            "",
+            hasResult ? "" : "Missing: Result: success|partial|failed",
+            hasConfidence ? "" : "Missing: Confidence: 0..1",
+            "",
+            "Add these lines to your response and retry.",
+          ].filter(Boolean).join("\n"),
+        };
+      }
+    }
+
     await completeWorkflowTracking(pi, ctx, workflow, text);
   });
 

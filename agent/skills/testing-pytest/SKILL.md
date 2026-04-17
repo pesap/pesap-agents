@@ -1,32 +1,40 @@
 ---
 name: testing-pytest
-description: Use this skill when the user needs pytest test design, refactoring, debugging, or CI test quality improvements (fixtures, parametrize, plugins, coverage, parallelism, property/snapshot/perf testing). Use even if they only say "fix tests" or "improve test suite".
+description: Python pytest adapter for TDD workflows. Use this skill when users need pytest test design, red-green-refactor execution, fixture/parametrize strategy, or CI test quality improvements in Python projects.
 ---
 
 ## Use when
-- User asks to write/refactor/debug pytest tests.
-- User asks about fixture design, conftest structure, or plugin usage.
-- User asks for coverage strategy, parallel test execution, or flaky-test fixes.
-- User asks for property-based, snapshot, performance, or CI benchmark testing.
+- Project uses Python + pytest.
+- User asks to write/refactor/debug tests with pytest.
+- User asks for TDD in Python.
+- User asks for fixture design, flaky test fixes, coverage, or performance checks in pytest.
 
 ## Avoid when
-- Project is not using pytest.
-- User asks for framework-agnostic advice with no Python/pytest scope.
+- Scope is not Python/pytest.
+- User asks for language-agnostic TDD only (use `tdd-core` first).
 
-## Instructions
-1. Define target behavior first (what test should prove).
-2. Prefer function-based tests with clear arrange/act/assert flow.
-3. Design fixtures by scope intentionally (`function`, `module`, `session`) and avoid hidden coupling.
-4. Use `@pytest.mark.parametrize` for input/output matrices.
-5. Use Hypothesis for invariants/properties, not example repetition.
-6. Use snapshot tests only for stable, reviewable outputs.
-7. Use `pytest-xdist` only when tests are isolated and deterministic.
-8. Set meaningful coverage thresholds; coverage is signal, not the goal.
-9. For failures, use targeted debugging (`-k`, `--lf`, `--pdb`, `-vv`, caplog/capsys).
-10. For CI performance regressions, use pytest-benchmark and compare historical baselines.
+## Relationship to tdd-core
+- Apply `tdd-core` as the base doctrine.
+- This skill adds pytest-specific execution patterns.
+
+## Pytest-specific workflow
+1. Pick one behavior from the TDD plan.
+2. **RED**: add one failing pytest test.
+3. **GREEN**: minimal implementation to pass.
+4. **REFACTOR**: clean code/fixtures while tests stay green.
+5. Repeat in small vertical slices.
+
+## Pytest guardrails
+- Prefer public-interface tests over internals.
+- Use `@pytest.mark.parametrize` for behavior matrices.
+- Use Hypothesis for invariants/properties.
+- Keep fixtures explicit by scope; avoid hidden coupling in `conftest.py`.
+- Use boundary mocks only; avoid mocking your own domain modules.
+
+See [TDD_REFERENCE.md](TDD_REFERENCE.md) for commands and troubleshooting.
 
 ## Output
-- Test strategy (what and why)
-- Added/updated test files and fixture changes
+- Behavior coverage for this cycle
+- Test files/fixtures changed
 - Commands run + results
-- Flakiness/perf risks and next actions
+- Remaining gaps/risks + next cycle

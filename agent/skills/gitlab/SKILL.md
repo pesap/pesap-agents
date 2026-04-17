@@ -177,6 +177,23 @@ test:
     - npm test
 ```
 
+**File-based cache key (max 2 files):**
+```yaml
+.cache-deps:
+  cache:
+    - key:
+        files:
+          - package-lock.json  # max 2 files allowed!
+          - pixi.lock
+        prefix: deps
+      paths:
+        - node_modules/
+        - .pixi/
+      policy: pull-push
+```
+
+> ⚠️ **Limit**: `cache:key:files` accepts **maximum 2 files**. Use `prefix` to add context.
+
 **Matrix jobs (parallel variants):**
 ```yaml
 test:

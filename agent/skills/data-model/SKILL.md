@@ -1,47 +1,86 @@
 ---
 name: data-model
-description: Design and evolve robust data models across Pydantic and infrasys Component patterns. Use when users ask about model schema design, `Annotated` + `Field` constraints, validators/serialization, or infrasys component/supplemental-attribute modeling.
+description: Design robust data contracts with dataclasses, Pydantic v2, pydantic-settings, and infrasys component patterns. Use when users ask about model shape, validation, serialization, typed config, or schema evolution.
 license: MIT
 allowed-tools: Read Edit Grep Glob Bash Write
 metadata:
   author: psanchez
-  version: "1.0.0"
+  version: "1.2.0"
   category: data-modeling
 ---
 
 # Data Model
 
 ## Use when
-- Designing or refactoring Pydantic `BaseModel` / `RootModel` schemas.
-- Designing/refactoring infrasys `Component` or `SupplementalAttribute` models.
-- Adding constraints, descriptions, validators, serializers, or migration-safe schema changes.
-- Deciding inheritance/composition boundaries for domain entities.
+- Designing/refactoring typed domain models.
+- Choosing between `@dataclass`, Pydantic, settings, or infrasys component models.
+- Defining field constraints, validators, serializers, aliases, or payload filtering.
+- Creating generic typed response/container models.
+- Updating schemas safely with backward compatibility in mind.
 
 ## Avoid when
-- Task is not schema/modeling related.
-- User asks for one-off framework wiring not tied to data contracts.
-- Domain decisions are still unknown (needs product/domain clarification first).
+- Task is not about data contracts.
+- User wants one-off scripting with no reusable model boundary.
+- Domain requirements are still undefined.
 
-## Modeling standard (mandatory)
-1. Use `Annotated[...]` for fields.
-2. Put full type hint inside `Annotated`.
-3. Use `Field(...)` for constrained fields.
-4. Always include `description=` in `Field(...)`.
-5. Prefer explicit domain types over `Any`.
-6. If a field trends to `str | None`, prefer extracting a nested model instead of nullable free-text blobs.
+## Quick router
+1. Simple trusted internal data -> `@dataclass`.
+2. External validated/serialized data -> Pydantic v2 `BaseModel`/`RootModel`.
+3. App config/env -> `pydantic-settings` (`BaseSettings`).
+4. infrasys system entities -> `Component` / `SupplementalAttribute`.
+
+## Non-negotiable rules
+
+### A) Core modeling
+1. Prefer typed models (`@dataclass` or Pydantic) over loose dicts.
+2. Use **Pydantic v2 only**.
+3. Use `Annotated[...]` for modeled fields.
+4. Put full type hint inside `Annotated`.
+5. Use `Field(...)` for constrained fields.
+6. Always include `description=` in `Field(...)`.
+7. Never use `typing.Union[...]`; use `A | B`.
+
+### B) Type quality
+8. Prefer built-in Pydantic semantic/constrained types before custom aliases (`PostgresDsn`, `PositiveFloat`, `EmailStr`, etc.).
+9. For finite domains, prefer `Enum` over free-form strings.
+10. If field drifts to `str | None` blob, extract nested model.
+11. For repeated float constraints, create typed alias only if built-ins do not fit.
+12. For mutable defaults (`list`, `dict`, `set`), use `Field(default_factory=...)`.
+
+### C) Validation/behavior
+13. Use `field_validator` / `model_validator` (v2).
+14. Use `model_dump` / `model_validate` (v2).
+15. Check field existence with `Model.model_fields`.
+16. Avoid `@computed_field` for core behavior; use explicit stored fields/methods.
+17. Use inheritance only for categorization, not shared-field reuse.
+
+### D) Serialization contracts
+18. Ensure fields are JSON-serializable.
+19. Prefer `Annotated[..., PlainSerializer(...)]` over `@field_serializer` decorator pattern.
+20. Use `serialization_alias`/`alias` for external naming contracts.
+21. Exclude runtime-only fields with `Field(exclude=True)` and conditional `exclude_if`.
+22. Use `model_dump(exclude_unset=True)` for sparse/patch payloads.
+23. Use `model_dump(exclude_none=True)` to omit `None` values.
+24. For immutable updates, use `model_copy(update={...})`; use `deep=True` when nested references must be cloned.
+
+### E) Config
+25. Use `pydantic-settings` for config; do not hand-parse `os.environ`/dotenv.
 
 ## Workflow
-1. Define domain boundary and required invariants.
-2. Choose target model style (`BaseModel` vs infrasys `Component`/`SupplementalAttribute`).
-3. Apply mandatory modeling standard.
-4. Add validators/serializers only when schema cannot express rule directly.
-5. Validate integration concerns (composition associations, serialization, migration compatibility).
-6. Add focused tests (valid + invalid examples).
+1. Identify boundary: internal vs external vs config vs infrasys entity.
+2. Pick model type using quick router.
+3. Apply non-negotiable rules.
+4. Add only needed validators/serializers.
+5. Add focused tests (valid + invalid + serialization).
+6. Check migration/compatibility impact.
 
-See [REFERENCE.md](./REFERENCE.md) for patterns and examples.
+See:
+- [REFERENCE.md](./REFERENCE.md) for full copy-paste patterns.
+- [EXAMPLES.md](./EXAMPLES.md) for bad -> good snippets.
+- [QUICKMAP.md](./QUICKMAP.md) for fast intent -> pattern lookup.
 
 ## Output
-- Recommended model shape and boundary choices
-- Exact field/constraint patterns to apply
-- Validation and serialization implications
-- Risks, migration notes, and follow-up checks
+- Chosen model type and reason.
+- Exact field/constraint/serialization patterns applied.
+- Validation + serialization implications.
+- Risks and migration notes.

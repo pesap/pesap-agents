@@ -13,10 +13,7 @@ export const RUNTIME_PATHS = {
   hooksDir: path.join(RUNTIME_DIR, "hooks"),
   hooksConfigPath: path.join(RUNTIME_DIR, "hooks", "hooks.yaml"),
   runtimeDailyLogPath: path.join(RUNTIME_DIR, "memory", "runtime", "live", "dailylog.md"),
-  packageSkillsPaths: [
-    path.join(PACKAGE_ROOT, "skills"),
-    path.join(PACKAGE_ROOT, ".pi", "skills"),
-  ],
+  packageSkillsPath: path.join(PACKAGE_ROOT, "skills"),
   profileConfigPath: path.join(RUNTIME_DIR, "profile.yaml"),
   firstPrinciplesConfigPath: path.join(RUNTIME_DIR, "compliance", "first-principles-gate.yaml"),
 } as const;

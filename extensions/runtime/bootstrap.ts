@@ -22,7 +22,7 @@ export async function loadFirstPrinciplesConfig(
 export function createWorkflowReaders(params: {
   skillflowsDir: string;
   commandsDir: string;
-  packageSkillsPaths: string[];
+  packageSkillsPath: string;
 }): {
   readWorkflow: (name: string) => Promise<string>;
   readCommandPrompt: (name: string) => Promise<string>;
@@ -37,17 +37,12 @@ export function createWorkflowReaders(params: {
   }
 
   async function readSkill(name: string): Promise<string> {
-    for (const skillRoot of params.packageSkillsPaths) {
-      const skillFile = path.resolve(skillRoot, name, "SKILL.md");
-      const resolvedSkillRoot = path.resolve(skillRoot);
-      const skillsRoot = `${resolvedSkillRoot}${path.sep}`;
-      if (!skillFile.startsWith(skillsRoot)) continue;
-
-      const content = await readTextIfExists(skillFile);
-      if (content.trim()) return content;
+    const skillFile = path.resolve(params.packageSkillsPath, name, "SKILL.md");
+    const skillsRoot = `${path.resolve(params.packageSkillsPath)}${path.sep}`;
+    if (!skillFile.startsWith(skillsRoot)) {
+      return "";
     }
-
-    return "";
+    return readTextIfExists(skillFile);
   }
 
   return { readWorkflow, readCommandPrompt, readSkill };

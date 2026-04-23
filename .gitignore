@@ -4,7 +4,8 @@ dist/
 *.tsbuildinfo
 
 # Runtime / local state
-runtime/
+!extensions/runtime/
+!extensions/runtime/*.ts
 .tmp/
 .pi/pesap-agent/
 

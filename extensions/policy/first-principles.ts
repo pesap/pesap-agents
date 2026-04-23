@@ -39,11 +39,14 @@ export function parsePolicyMode(value: string | undefined): PolicyMode | null {
   return null;
 }
 
-export function parseFirstPrinciplesConfig(raw: string): { config: FirstPrinciplesConfig; warnings: string[] } {
+export function parseFirstPrinciplesConfig(
+  raw: string,
+  defaults: FirstPrinciplesConfig = { preflightMode: "warn", postflightMode: "warn", responseComplianceMode: "warn" },
+): { config: FirstPrinciplesConfig; warnings: string[] } {
   if (!raw.trim()) {
     return {
-      config: { preflightMode: "warn", postflightMode: "warn", responseComplianceMode: "warn" },
-      warnings: ["first-principles-gate.yaml missing or empty; using defaults (warn/warn)."],
+      config: { ...defaults },
+      warnings: ["first-principles-gate.yaml missing or empty; using profile/default modes."],
     };
   }
 
@@ -52,15 +55,15 @@ export function parseFirstPrinciplesConfig(raw: string): { config: FirstPrincipl
     parsedYaml = loadYaml(raw);
   } catch (error) {
     return {
-      config: { preflightMode: "warn", postflightMode: "warn", responseComplianceMode: "warn" },
-      warnings: [`first-principles-gate.yaml parse error (${error instanceof Error ? error.message : String(error)}); using defaults.`],
+      config: { ...defaults },
+      warnings: [`first-principles-gate.yaml parse error (${error instanceof Error ? error.message : String(error)}); using profile/default modes.`],
     };
   }
 
   if (!isRecord(parsedYaml)) {
     return {
-      config: { preflightMode: "warn", postflightMode: "warn", responseComplianceMode: "warn" },
-      warnings: ["first-principles-gate.yaml must contain a mapping root; using defaults."],
+      config: { ...defaults },
+      warnings: ["first-principles-gate.yaml must contain a mapping root; using profile/default modes."],
     };
   }
 
@@ -85,9 +88,9 @@ export function parseFirstPrinciplesConfig(raw: string): { config: FirstPrincipl
 
   return {
     config: {
-      preflightMode: parseModeField("preflight_mode") ?? "warn",
-      postflightMode: parseModeField("postflight_mode") ?? "warn",
-      responseComplianceMode: parseModeField("response_compliance") ?? "warn",
+      preflightMode: parseModeField("preflight_mode") ?? defaults.preflightMode,
+      postflightMode: parseModeField("postflight_mode") ?? defaults.postflightMode,
+      responseComplianceMode: parseModeField("response_compliance") ?? defaults.responseComplianceMode,
     },
     warnings,
   };

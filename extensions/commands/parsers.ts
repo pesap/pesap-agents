@@ -1,12 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import {
-  DEFAULT_DEBUG_PARALLEL,
-  DEFAULT_FEATURE_PARALLEL,
-  DEFAULT_REMOVE_SLOP_PARALLEL,
-  RISK_APPROVAL_TTL_MINUTES,
-} from "../lib/constants";
+import { RISK_APPROVAL_TTL_MINUTES } from "../lib/constants";
 import { removeFlag } from "../lib/flags";
 import { normalizeWhitespace } from "../lib/text";
 import type { PostflightRecord, PreflightRecord } from "../policy/first-principles";
@@ -91,48 +85,34 @@ export function parsePostflightArgs(args: string, parsePostflightLine: (line: st
   return { record: parsed };
 }
 
-export function parseDebugArgs(args: string): { problem: string; parallel: number; fix: boolean } {
+export function parseDebugArgs(args: string): { problem: string; fix: boolean } {
   let rest = normalizeWhitespace(args);
   const fix = /(^|\s)--fix(\s|$)/.test(rest);
   rest = normalizeWhitespace(rest.replace(/(^|\s)--fix(\s|$)/g, " "));
-
-  const parallelResult = removeFlag(rest, /(^|\s)--parallel\s+(\d+)(\s|$)/);
-  rest = parallelResult.value;
-  const parallel = Number(parallelResult.match?.[2] ?? DEFAULT_DEBUG_PARALLEL);
+  rest = removeFlag(rest, /(^|\s)--parallel\s+\d+(\s|$)/).value;
 
   return {
     problem: rest,
-    parallel: Number.isFinite(parallel) && parallel > 0 ? parallel : DEFAULT_DEBUG_PARALLEL,
     fix,
   };
 }
 
-export function parseFeatureArgs(args: string): { request: string; parallel: number; ship: boolean } {
+export function parseFeatureArgs(args: string): { request: string; ship: boolean } {
   let rest = normalizeWhitespace(args);
   const ship = /(^|\s)--ship(\s|$)/.test(rest);
   rest = normalizeWhitespace(rest.replace(/(^|\s)--ship(\s|$)/g, " "));
-
-  const parallelResult = removeFlag(rest, /(^|\s)--parallel\s+(\d+)(\s|$)/);
-  rest = parallelResult.value;
-  const parallel = Number(parallelResult.match?.[2] ?? DEFAULT_FEATURE_PARALLEL);
+  rest = removeFlag(rest, /(^|\s)--parallel\s+\d+(\s|$)/).value;
 
   return {
     request: rest,
-    parallel: Number.isFinite(parallel) && parallel > 0 ? parallel : DEFAULT_FEATURE_PARALLEL,
     ship,
   };
 }
 
-export function parseRemoveSlopArgs(args: string): { scope: string; parallel: number } {
-  let rest = normalizeWhitespace(args);
-
-  const parallelResult = removeFlag(rest, /(^|\s)--parallel\s+(\d+)(\s|$)/);
-  rest = parallelResult.value;
-  const parallel = Number(parallelResult.match?.[2] ?? DEFAULT_REMOVE_SLOP_PARALLEL);
-
+export function parseRemoveSlopArgs(args: string): { scope: string } {
+  const scope = removeFlag(normalizeWhitespace(args), /(^|\s)--parallel\s+\d+(\s|$)/).value;
   return {
-    scope: rest || "current repository",
-    parallel: Number.isFinite(parallel) && parallel > 0 ? parallel : DEFAULT_REMOVE_SLOP_PARALLEL,
+    scope: scope || "current repository",
   };
 }
 
@@ -442,9 +422,6 @@ export function buildSimplifyTarget(parsed: ParsedReviewArgs): ScopedTarget {
   });
 }
 
-export function hasSubagentTool(pi: ExtensionAPI): boolean {
-  return pi.getAllTools().some((tool) => tool.name === "subagent");
-}
 
 export function buildSkillTemplate(skillName: string, topic: string): string {
   const summary = topic || skillName;

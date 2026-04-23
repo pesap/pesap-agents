@@ -10,13 +10,13 @@ The target path must be the infrasys package root directory
 Examples
 --------
 # Check installed package (recommended)
-uvx --from python --with infrasys python agent/skills/infrasys/scripts/check_api_symbols.py
+uvx --from python --with infrasys python skills/infrasys/scripts/check_api_symbols.py
 
 # Optional: check a source checkout directly
-uvx --from python python agent/skills/infrasys/scripts/check_api_symbols.py --repo /path/to/infrasys_package_root
+uvx --from python python skills/infrasys/scripts/check_api_symbols.py --repo /path/to/infrasys_package_root
 
 # Print resolved package root
-uvx --from python --with infrasys python agent/skills/infrasys/scripts/check_api_symbols.py --print-root
+uvx --from python --with infrasys python skills/infrasys/scripts/check_api_symbols.py --print-root
 """
 
 from __future__ import annotations

@@ -39,7 +39,6 @@ skills:
   - type-hardening
   - comment-quality-gate
   - public-api-guard
-  - create-pisubagents
   - caveman
   - r2x-core-plugin-system-and-data-modeling
   - infrasys
@@ -51,7 +50,7 @@ skills:
   - serialization-migration
 pi:
   scope: project
-  tools: "read,edit,write,grep,ast_search,nu,bash,subagent,gitagent_remember"
+  tools: "read,edit,write,grep,ast_search,nu,bash,gitagent_remember"
 runtime:
   max_turns: 40
   timeout: 300

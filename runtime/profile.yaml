@@ -1,0 +1,65 @@
+version: 1
+
+quality:
+  # Workflows below this confidence are tracked for follow-up in teardown summaries.
+  low_confidence_threshold: 0.7
+
+first_principles:
+  # Used as defaults before first-principles-gate.yaml overrides are applied.
+  preflight_mode: warn
+  postflight_mode: warn
+  response_compliance: enforce
+
+commands:
+  debug:
+    enabled: true
+    prompt: debug-workflow.md
+    workflow: debug-workflow.yaml
+  feature:
+    enabled: true
+    prompt: feature-workflow.md
+    workflow: feature-workflow.yaml
+  review:
+    enabled: true
+    prompt: review-workflow.md
+    workflow: review-workflow.yaml
+  git-review:
+    enabled: true
+    prompt: git-review-workflow.md
+    workflow: git-review-workflow.yaml
+  simplify:
+    enabled: true
+    prompt: simplify-workflow.md
+    workflow: simplify-workflow.yaml
+  remove-slop:
+    enabled: true
+    prompt: remove-slop-workflow.md
+    workflow: remove-slop-workflow.yaml
+  domain-model:
+    enabled: true
+    prompt: domain-model-workflow.md
+    workflow: domain-model-workflow.yaml
+  to-prd:
+    enabled: true
+    prompt: to-prd-workflow.md
+    workflow: to-prd-workflow.yaml
+  to-issues:
+    enabled: true
+    prompt: to-issues-workflow.md
+    workflow: to-issues-workflow.yaml
+  triage-issue:
+    enabled: true
+    prompt: triage-issue-workflow.md
+    workflow: triage-issue-workflow.yaml
+  tdd:
+    enabled: true
+    prompt: tdd-workflow.md
+    workflow: tdd-workflow.yaml
+  address-open-issues:
+    enabled: true
+    prompt: address-open-issues-workflow.md
+    workflow: address-open-issues-workflow.yaml
+  learn-skill:
+    enabled: true
+    prompt: learn-skill-workflow.md
+    workflow: learn-skill-workflow.yaml

@@ -1,24 +1,13 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import type {
+  WorkflowCommandConfig,
+  WorkflowType,
+} from "../runtime/profile";
 
 type NotifyType = "info" | "error" | "warning" | "success";
 type CommandHandler = (args: string | undefined, ctx: ExtensionCommandContext) => Promise<void>;
-type WorkflowType =
-  | "debug"
-  | "feature"
-  | "review"
-  | "git-review"
-  | "simplify"
-  | "learn-skill"
-  | "remove-slop"
-  | "domain-model"
-  | "to-prd"
-  | "to-issues"
-  | "triage-issue"
-  | "tdd"
-  | "address-open-issues";
-
 type WorkflowFlags = Record<string, string | number | boolean | null | string[]>;
 
 type ReviewArgsResult =
@@ -35,79 +24,6 @@ interface ScopedTarget {
   flags: WorkflowFlags;
 }
 
-interface WorkflowRuntimeConfig {
-  promptFile: string;
-  workflowFile: string;
-  entryType: string;
-}
-
-const WORKFLOW_RUNTIME: Record<WorkflowType, WorkflowRuntimeConfig> = {
-  debug: {
-    promptFile: "debug-workflow.md",
-    workflowFile: "debug-workflow.yaml",
-    entryType: "pesap-debug-command",
-  },
-  feature: {
-    promptFile: "feature-workflow.md",
-    workflowFile: "feature-workflow.yaml",
-    entryType: "pesap-feature-command",
-  },
-  review: {
-    promptFile: "review-workflow.md",
-    workflowFile: "review-workflow.yaml",
-    entryType: "pesap-review-command",
-  },
-  "git-review": {
-    promptFile: "git-review-workflow.md",
-    workflowFile: "git-review-workflow.yaml",
-    entryType: "pesap-git-review-command",
-  },
-  simplify: {
-    promptFile: "simplify-workflow.md",
-    workflowFile: "simplify-workflow.yaml",
-    entryType: "pesap-simplify-command",
-  },
-  "remove-slop": {
-    promptFile: "remove-slop-workflow.md",
-    workflowFile: "remove-slop-workflow.yaml",
-    entryType: "pesap-remove-slop-command",
-  },
-  "domain-model": {
-    promptFile: "domain-model-workflow.md",
-    workflowFile: "domain-model-workflow.yaml",
-    entryType: "pesap-domain-model-command",
-  },
-  "to-prd": {
-    promptFile: "to-prd-workflow.md",
-    workflowFile: "to-prd-workflow.yaml",
-    entryType: "pesap-to-prd-command",
-  },
-  "to-issues": {
-    promptFile: "to-issues-workflow.md",
-    workflowFile: "to-issues-workflow.yaml",
-    entryType: "pesap-to-issues-command",
-  },
-  "triage-issue": {
-    promptFile: "triage-issue-workflow.md",
-    workflowFile: "triage-issue-workflow.yaml",
-    entryType: "pesap-triage-issue-command",
-  },
-  tdd: {
-    promptFile: "tdd-workflow.md",
-    workflowFile: "tdd-workflow.yaml",
-    entryType: "pesap-tdd-command",
-  },
-  "address-open-issues": {
-    promptFile: "address-open-issues-workflow.md",
-    workflowFile: "address-open-issues-workflow.yaml",
-    entryType: "pesap-address-open-issues-command",
-  },
-  "learn-skill": {
-    promptFile: "learn-skill-workflow.md",
-    workflowFile: "learn-skill-workflow.yaml",
-    entryType: "pesap-learn-skill-command",
-  },
-};
 
 interface RunWorkflowCommandParams {
   ctx: ExtensionCommandContext;
@@ -117,8 +33,6 @@ interface RunWorkflowCommandParams {
   sections: string[];
   entry: Record<string, string | number | boolean | null | string[]>;
   startedMessage: string;
-  subagentAvailable?: boolean;
-  subagentCommandName?: string;
 }
 
 export function createWorkflowCommandHandlers(params: {
@@ -129,7 +43,7 @@ export function createWorkflowCommandHandlers(params: {
   normalizeWhitespace: (value: string) => string;
   ensureWorkflowSlotAvailable: (ctx: ExtensionCommandContext) => boolean;
   ensureAgentEnabledForCommand: (pi: ExtensionAPI, ctx: ExtensionCommandContext, source: WorkflowType) => void;
-  hasSubagentTool: (pi: ExtensionAPI) => boolean;
+  resolveWorkflowConfig: (type: WorkflowType) => WorkflowCommandConfig | null;
   beginWorkflowTracking: (
     pi: ExtensionAPI,
     ctx: ExtensionCommandContext,
@@ -138,18 +52,13 @@ export function createWorkflowCommandHandlers(params: {
     flags: WorkflowFlags,
   ) => Promise<unknown>;
   enqueueWorkflow: (pi: ExtensionAPI, workflowPromptName: string, workflowFileName: string, sections: string[]) => Promise<void>;
-  notifySubagentUnavailable: (
-    ctx: ExtensionCommandContext,
-    commandName: string,
-    notify: (ctx: ExtensionCommandContext, message: string, type: NotifyType) => void,
-  ) => void;
   notifyWorkflowStarted: (ctx: ExtensionCommandContext, message: string, notify: (ctx: ExtensionCommandContext, message: string, type: NotifyType) => void) => void;
-  parseDebugArgs: (args: string) => { problem: string; parallel: number; fix: boolean };
-  parseFeatureArgs: (args: string) => { request: string; parallel: number; ship: boolean };
+  parseDebugArgs: (args: string) => { problem: string; fix: boolean };
+  parseFeatureArgs: (args: string) => { request: string; ship: boolean };
   parseReviewArgs: (args: string, cwd: string, commandName?: string) => ReviewArgsResult;
   buildReviewTarget: (parsed: Exclude<ReviewArgsResult, { error: string }>) => ScopedTarget;
   loadProjectReviewGuidelines: (cwd: string) => Promise<string | null>;
-  parseRemoveSlopArgs: (args: string) => { scope: string; parallel: number };
+  parseRemoveSlopArgs: (args: string) => { scope: string };
   parseDomainModelArgs: (args: string) => { plan: string };
   parseToPrdArgs: (args: string) => { context: string };
   parseToIssuesArgs: (args: string) => { source: string };
@@ -198,10 +107,9 @@ export function createWorkflowCommandHandlers(params: {
     normalizeWhitespace,
     ensureWorkflowSlotAvailable,
     ensureAgentEnabledForCommand,
-    hasSubagentTool,
+    resolveWorkflowConfig,
     beginWorkflowTracking,
     enqueueWorkflow,
-    notifySubagentUnavailable,
     notifyWorkflowStarted,
     parseDebugArgs,
     parseFeatureArgs,
@@ -225,7 +133,15 @@ export function createWorkflowCommandHandlers(params: {
   } = params;
 
   async function runWorkflowCommand(config: RunWorkflowCommandParams): Promise<void> {
-    const runtime = WORKFLOW_RUNTIME[config.type];
+    const runtime = resolveWorkflowConfig(config.type);
+    if (!runtime) {
+      notify(
+        config.ctx,
+        `Workflow command /${config.type} is disabled by runtime/profile.yaml or failed validation.`,
+        "error",
+      );
+      return;
+    }
 
     ensureAgentEnabledForCommand(pi, config.ctx, config.type);
     await beginWorkflowTracking(pi, config.ctx, config.type, config.input, config.flags);
@@ -236,10 +152,6 @@ export function createWorkflowCommandHandlers(params: {
       at: nowIso(),
     });
 
-    if (config.subagentCommandName && config.subagentAvailable === false) {
-      notifySubagentUnavailable(config.ctx, config.subagentCommandName, notify);
-    }
-
     notifyWorkflowStarted(config.ctx, config.startedMessage, notify);
   }
 
@@ -248,12 +160,10 @@ export function createWorkflowCommandHandlers(params: {
       const parsed = parseDebugArgs(args ?? "");
       if (!ensureWorkflowSlotAvailable(ctx)) return;
       if (!parsed.problem) {
-        notify(ctx, "Usage: /debug <problem> [--parallel N] [--fix]", "error");
+        notify(ctx, "Usage: /debug <problem> [--fix]", "error");
         return;
       }
 
-      const subagentAvailable = hasSubagentTool(pi);
-      const parallelTarget = subagentAvailable ? parsed.parallel : 1;
       const applyFixMode = parsed.fix ? "yes" : "no";
 
       await runWorkflowCommand({
@@ -261,30 +171,21 @@ export function createWorkflowCommandHandlers(params: {
         type: "debug",
         input: parsed.problem,
         flags: {
-          parallel: parallelTarget,
           fix: parsed.fix,
-          subagentAvailable,
         },
         sections: [
           `User problem: ${parsed.problem}`,
-          `Parallel subagents target: ${parallelTarget}`,
           `Apply fix: ${applyFixMode}`,
           "",
-          subagentAvailable
-            ? "Instruction: If the subagent tool is available, run parallel hypothesis investigations and synthesize findings before selecting a fix."
-            : "Instruction: pi-subagents is not installed in this session, run hypothesis investigations sequentially without subagent delegation.",
+          "Instruction: Investigate hypotheses rigorously and converge on the highest-confidence root cause before applying changes.",
           constants.POSTFLIGHT_INSTRUCTION,
           constants.REQUIRED_WORKFLOW_FOOTER_INSTRUCTION,
         ],
         entry: {
           problem: parsed.problem,
-          parallel: parallelTarget,
           fix: parsed.fix,
-          subagentAvailable,
         },
-        subagentAvailable,
-        subagentCommandName: "debug",
-        startedMessage: `Started debug workflow (parallel=${parallelTarget}, fix=${parsed.fix ? "on" : "off"}, subagents=${subagentAvailable ? "on" : "off"}).`,
+        startedMessage: `Started debug workflow (fix=${parsed.fix ? "on" : "off"}).`,
       });
     },
 
@@ -292,42 +193,30 @@ export function createWorkflowCommandHandlers(params: {
       const parsed = parseFeatureArgs(args ?? "");
       if (!ensureWorkflowSlotAvailable(ctx)) return;
       if (!parsed.request) {
-        notify(ctx, "Usage: /feature <request> [--parallel N] [--ship]", "error");
+        notify(ctx, "Usage: /feature <request> [--ship]", "error");
         return;
       }
-
-      const subagentAvailable = hasSubagentTool(pi);
-      const parallelTarget = subagentAvailable ? parsed.parallel : 1;
 
       await runWorkflowCommand({
         ctx,
         type: "feature",
         input: parsed.request,
         flags: {
-          parallel: parallelTarget,
           ship: parsed.ship,
-          subagentAvailable,
         },
         sections: [
           `Feature request: ${parsed.request}`,
-          `Parallel subagents target: ${parallelTarget}`,
           `Ship mode: ${parsed.ship ? "yes" : "no"}`,
           "",
-          subagentAvailable
-            ? "Instruction: Use parallel subagents for implementation/tests/docs when that reduces delivery time or risk."
-            : "Instruction: pi-subagents is not installed in this session, run implementation/tests/docs sequentially without subagent delegation.",
+          "Instruction: Execute implementation, tests, and docs tracks in a disciplined sequence unless another extension orchestrates parallelism.",
           constants.POSTFLIGHT_INSTRUCTION,
           constants.REQUIRED_WORKFLOW_FOOTER_INSTRUCTION,
         ],
         entry: {
           request: parsed.request,
-          parallel: parallelTarget,
           ship: parsed.ship,
-          subagentAvailable,
         },
-        subagentAvailable,
-        subagentCommandName: "feature",
-        startedMessage: `Started feature workflow (parallel=${parallelTarget}, ship=${parsed.ship ? "on" : "off"}, subagents=${subagentAvailable ? "on" : "off"}).`,
+        startedMessage: `Started feature workflow (ship=${parsed.ship ? "on" : "off"}).`,
       });
     },
 
@@ -453,37 +342,25 @@ export function createWorkflowCommandHandlers(params: {
       const parsed = parseRemoveSlopArgs(args ?? "");
       if (!ensureWorkflowSlotAvailable(ctx)) return;
 
-      const subagentAvailable = hasSubagentTool(pi);
-      const parallelTarget = subagentAvailable ? parsed.parallel : 1;
-
       await runWorkflowCommand({
         ctx,
         type: "remove-slop",
         input: parsed.scope,
         flags: {
           scope: parsed.scope,
-          parallel: parallelTarget,
-          subagentAvailable,
         },
         sections: [
           `Cleanup scope: ${parsed.scope}`,
-          `Parallel subagents target: ${parallelTarget}`,
           "",
-          subagentAvailable
-            ? "Instruction: Run 8 analysis tracks in parallel, then implement approved items sequentially."
-            : "Instruction: pi-subagents is not installed in this session, run the 8 analysis tracks sequentially.",
+          "Instruction: Run analysis tracks first, then implement approved low-risk items sequentially.",
           "Instruction: Select language-aware skills based on the codebase stack. Mention missing useful skills if any.",
           constants.POSTFLIGHT_INSTRUCTION,
           constants.REQUIRED_WORKFLOW_FOOTER_INSTRUCTION,
         ],
         entry: {
           scope: parsed.scope,
-          parallel: parallelTarget,
-          subagentAvailable,
         },
-        subagentAvailable,
-        subagentCommandName: "remove-slop",
-        startedMessage: `Started remove-slop workflow (scope=${parsed.scope}, parallel=${parallelTarget}, subagents=${subagentAvailable ? "on" : "off"}).`,
+        startedMessage: `Started remove-slop workflow (scope=${parsed.scope}).`,
       });
     },
 

@@ -5,7 +5,7 @@ Use this file only for repo-specific deltas.
 
 ## Repo-specific contract
 
-- This package defines one canonical agent identity (`agent/agent.yaml`).
+- This package defines one canonical agent identity (`runtime/agent.yaml`).
 - Do not create additional top-level agents unless explicitly requested.
 - Keep prompts and workflows concise, auditable, and reusable.
 - Prefer additive learning updates over broad rewrites.

@@ -1,7 +1,4 @@
 export const AGENT_STATE_TYPE = "pesap-agent-state";
-export const DEFAULT_DEBUG_PARALLEL = 3;
-export const DEFAULT_FEATURE_PARALLEL = 2;
-export const DEFAULT_REMOVE_SLOP_PARALLEL = 8;
 export const LEARNING_STORE_DIRNAME = "pesap-agent";
 export const LEARNING_VERSION = 1;
 export const MEMORY_TAIL_LINES = 20;
@@ -10,7 +7,6 @@ export const PROMOTION_SUCCESS_THRESHOLD = 0.75;
 export const PROMOTION_IMPROVEMENT_THRESHOLD = 0.4;
 export const RISK_APPROVAL_TYPE = "pesap-risk-approval";
 export const RISK_APPROVAL_TTL_MINUTES = 20;
-export const LOW_CONFIDENCE_THRESHOLD = 0.7;
 export const PREFLIGHT_STATE_TYPE = "pesap-preflight-state";
 export const POSTFLIGHT_EVENT_TYPE = "pesap-postflight-event";
 export const POLICY_EVENT_TYPE = "pesap-policy-event";

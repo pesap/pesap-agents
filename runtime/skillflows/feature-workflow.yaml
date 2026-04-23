@@ -8,13 +8,8 @@ steps:
     action: extract_acceptance_criteria
   - id: plan
     action: produce_minimal_plan
-  - id: parallel-execution
-    action: optionally_delegate_subagents
-    parameters:
-      tracks:
-        - implementation
-        - tests
-        - docs
+  - id: execute-tracks
+    action: deliver_implementation_tests_docs
   - id: integrate
     action: merge_outputs_consistently
   - id: validate

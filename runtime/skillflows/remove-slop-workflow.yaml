@@ -13,8 +13,8 @@ steps:
     action: confirm_scope_and_constraints
   - id: skill-selection
     action: select_language_aware_skills
-  - id: parallel-analysis
-    action: run_parallel_subagents
+  - id: analysis-tracks
+    action: run_analysis_tracks_then_prioritize
     parameters:
       tracks:
         - dry-dedup

@@ -10,12 +10,19 @@
     "gitagent"
   ],
   "license": "MIT",
+  "scripts": {
+    "smoke": "npm run lint",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "format": "biome format --write ."
+  },
   "pi": {
     "extensions": [
       "./extensions/index.ts"
     ],
     "skills": [
-      "./agent/skills"
+      "./skills",
+      "./.pi/skills"
     ],
     "themes": [
       "./themes"
@@ -31,6 +38,7 @@
     "js-yaml": "^4.1.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.2.6",
     "@types/js-yaml": "^4.0.9",
     "prettier": "3.8.3"
   }

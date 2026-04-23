@@ -7,8 +7,8 @@ Input can be:
 
 Examples
 --------
-uvx --from python python agent/skills/infrasys/scripts/inspect_time_series_db.py ./system_time_series/time_series_metadata.db
-uvx --from python python agent/skills/infrasys/scripts/inspect_time_series_db.py ./system_time_series --sample 3
+uvx --from python python skills/infrasys/scripts/inspect_time_series_db.py ./system_time_series/time_series_metadata.db
+uvx --from python python skills/infrasys/scripts/inspect_time_series_db.py ./system_time_series --sample 3
 """
 
 from __future__ import annotations

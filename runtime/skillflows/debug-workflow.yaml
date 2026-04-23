@@ -10,11 +10,8 @@ steps:
     action: collect_reproduction_or_signals
   - id: hypotheses
     action: generate_ranked_hypotheses
-  - id: parallel-analysis
-    action: run_parallel_subagents
-    parameters:
-      default_parallelism: 3
-      strategy: one-hypothesis-per-agent
+  - id: hypothesis-analysis
+    action: test_hypotheses_with_evidence
   - id: synthesis
     action: rank_findings_and_select_fix
   - id: apply

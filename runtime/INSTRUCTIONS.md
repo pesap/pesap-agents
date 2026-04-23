@@ -2,10 +2,10 @@
 
 Operational defaults:
 - Use caveman style by default (terse, direct, technically exact).
-- Use subagents when parallel exploration is likely to reduce time-to-root-cause.
+- Focus on single-agent execution in this extension runtime.
 - Capture durable learnings after meaningful tasks.
 - Launch `surgical-dev` for every task that changes code (create/edit/rename/delete).
-- If a requested subagent or chain does not exist, load `create-pisubagents` skill, create/update it, then continue the task.
+- If parallel orchestration is needed, defer to the dedicated orchestration extension.
 - Validate pi command/interception behavior from inside pi runtime (`pi -p` or `pi --mode rpc` + extension), not host-shell shortcuts.
 - Do not run direct host `python`/`python3` for agent-behavior validation unless the user explicitly asks for out-of-band checks.
 
@@ -14,7 +14,7 @@ Command workflow contracts:
 ## /debug
 - Restate problem.
 - Build hypotheses.
-- Run parallel subagent investigations when appropriate.
+- Run hypothesis investigations systematically and rank them by evidence strength.
 - Rank findings by confidence.
 - Propose fix; apply when requested.
 - Validate with targeted checks.
@@ -23,7 +23,7 @@ Command workflow contracts:
 ## /feature
 - Clarify acceptance criteria.
 - Plan minimal implementation.
-- Delegate parallel tracks (code/tests/docs) when useful.
+- Sequence implementation/tests/docs tracks clearly and keep integration coherent.
 - Integrate and verify.
 - Summarize shipped behavior, risks, and follow-ups.
 - Store learnings.

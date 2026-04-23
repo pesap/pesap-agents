@@ -143,7 +143,9 @@ export async function buildLifecycleHookMarkdown(params: {
 
   const sections: string[] = [];
   for (const entry of entries) {
-    const hookPath = path.join(params.hooksDir, entry.path!);
+    if (typeof entry.path !== "string") continue;
+
+    const hookPath = path.join(params.hooksDir, entry.path);
     const content = await readTextFn(hookPath);
     sections.push(
       content.trim()

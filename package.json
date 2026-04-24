@@ -27,8 +27,7 @@
     ],
     "themes": [
       "./themes"
-    ],
-    "image": "./assets/pylon.png"
+    ]
   },
   "peerDependencies": {
     "@mariozechner/pi-ai": "*",

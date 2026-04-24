@@ -23,6 +23,7 @@ export interface PreflightRecord {
   clarify: PreflightClarify;
   raw: string;
   source: PreflightSource;
+  workflowId?: string | null;
 }
 
 export interface PostflightRecord {

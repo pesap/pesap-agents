@@ -18,7 +18,14 @@ description: Use this skill when the user needs GitHub terminal workflows (PRs, 
 2. Gather evidence with `gh` commands.
 3. Diagnose failure/bottleneck and propose minimal high-impact changes.
 4. Validate via checks/reruns where possible.
-5. Summarize evidence, decisions, and residual risks.
+5. For PR feedback responses, prefer direct replies in the original review thread.
+6. Summarize evidence, decisions, and residual risks.
+
+## PR review reply policy
+- Prefer replying in-thread to the reviewer comment (not a general PR comment).
+- Use `gh api` with `in_reply_to` on `pulls/{pull_number}/comments`.
+- Only use `gh pr comment` when there is no thread/comment ID to reply to.
+- If wrong/general replies were posted, delete them and repost in-thread.
 
 See [REFERENCE.md](./REFERENCE.md) for command recipes and CI optimization playbook.
 

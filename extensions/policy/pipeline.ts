@@ -37,16 +37,63 @@ export interface MutationPreflightDecision {
   blockReason?: string;
 }
 
+function buildAcceptedPreflightDetail(preflight: PreflightRecord): string {
+  return `Using ${preflight.source} preflight: ${buildPreflightRawLine(preflight)}`;
+}
+
+function evaluatePreflightValidity(preflight: PreflightRecord | null, activeWorkflowId: string | null): {
+  violation: boolean;
+  detail: string;
+} {
+  if (!preflight) {
+    return {
+      violation: true,
+      detail: "Missing valid preflight before mutation.",
+    };
+  }
+
+  if (preflight.source === "auto") {
+    if (!activeWorkflowId) {
+      return {
+        violation: true,
+        detail: "Stale auto preflight outside active workflow.",
+      };
+    }
+
+    if (preflight.workflowId !== activeWorkflowId) {
+      return {
+        violation: true,
+        detail: `Auto preflight workflow mismatch (expected ${activeWorkflowId}, got ${preflight.workflowId ?? "none"}).`,
+      };
+    }
+
+    return {
+      violation: false,
+      detail: buildAcceptedPreflightDetail(preflight),
+    };
+  }
+
+  if (activeWorkflowId && preflight.workflowId && preflight.workflowId !== activeWorkflowId) {
+    return {
+      violation: true,
+      detail: `Manual preflight workflow mismatch (expected ${activeWorkflowId}, got ${preflight.workflowId}).`,
+    };
+  }
+
+  return {
+    violation: false,
+    detail: buildAcceptedPreflightDetail(preflight),
+  };
+}
+
 export function evaluateMutationPreflightPolicy(options: {
   preflightMode: PolicyMode;
   preflight: PreflightRecord | null;
   toolName: string;
+  activeWorkflowId: string | null;
 }): MutationPreflightDecision {
-  const violation = !options.preflight;
+  const { violation, detail } = evaluatePreflightValidity(options.preflight, options.activeWorkflowId);
   const outcome = modeOutcome(options.preflightMode, violation);
-  const detail = violation
-    ? "Missing valid preflight before mutation."
-    : `Using ${options.preflight.source} preflight: ${buildPreflightRawLine(options.preflight)}`;
 
   if (outcome === "warn") {
     return {
@@ -62,7 +109,7 @@ export function evaluateMutationPreflightPolicy(options: {
       detail,
       blockReason: [
         `Policy blocked ${options.toolName}.`,
-        "Missing valid preflight before first mutation.",
+        "Missing or invalid preflight before first mutation.",
         "Run:",
         "  /preflight Preflight: skill=<name|none> reason=\"<short>\" clarify=<yes|no>",
         "Remediate and retry.",

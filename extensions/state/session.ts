@@ -17,6 +17,7 @@ interface PreflightStateEntryData {
   clarify?: string;
   raw?: string;
   source?: string;
+  workflowId?: string | null;
 }
 
 interface AgentStateEntryData {
@@ -133,6 +134,7 @@ export function getPreflightFromSession(
       && guards.isPreflightClarify(data.clarify)
       && typeof data.raw === "string"
       && guards.isPreflightSource(data.source)
+      && (data.workflowId === undefined || data.workflowId === null || typeof data.workflowId === "string")
     ) {
       record = {
         at: data.at,
@@ -141,6 +143,7 @@ export function getPreflightFromSession(
         clarify: data.clarify,
         raw: data.raw,
         source: data.source,
+        workflowId: data.workflowId ?? null,
       };
     }
   }

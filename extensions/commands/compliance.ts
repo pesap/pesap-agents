@@ -18,6 +18,7 @@ export function createComplianceCommandHandlers(params: {
   appendRiskApprovalEntry: (approval: { reason: string; approvedAt: string; expiresAt: string }) => void;
   appendPreflightEntry: (record: PreflightRecord) => void;
   appendPostflightEntry: (record: PostflightRecord) => void;
+  getActiveWorkflowId?: () => string | null;
 }): {
   compliance: CommandHandler;
   approveRisk: CommandHandler;
@@ -97,9 +98,15 @@ export function createComplianceCommandHandlers(params: {
         params.notify(ctx, parsed.error ?? "Invalid preflight.", "error");
         return;
       }
-      params.runtimeState.activePreflight = parsed.record;
-      params.appendPreflightEntry(parsed.record);
-      params.notify(ctx, `Preflight recorded (${parsed.record.skill}).`, "success");
+
+      const activeWorkflowId = params.getActiveWorkflowId?.() ?? null;
+      const record = activeWorkflowId
+        ? { ...parsed.record, workflowId: activeWorkflowId }
+        : parsed.record;
+
+      params.runtimeState.activePreflight = record;
+      params.appendPreflightEntry(record);
+      params.notify(ctx, `Preflight recorded (${record.skill}).`, "success");
     },
 
     postflight: async (args, ctx) => {

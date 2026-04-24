@@ -160,6 +160,7 @@ export async function beginWorkflowTracking<TWorkflowType extends string, TWorkf
     clarify: "no",
     raw: `Preflight: skill=${params.type} reason="${autoPreflightReason}" clarify=no`,
     source: "auto",
+    workflowId: id,
   };
   params.appendPreflightEntry(params.pi, params.runtimeState.activePreflight);
 

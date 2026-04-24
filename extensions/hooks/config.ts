@@ -131,6 +131,18 @@ export async function loadHooksConfig(hooksConfigPath: string, defaults: HookCon
   return parseHooksConfig(raw, defaults);
 }
 
+function resolveHookMarkdownPath(hooksDir: string, hookPath: string): string | null {
+  const candidate = hookPath.trim();
+  if (!candidate || path.isAbsolute(candidate)) return null;
+
+  const hooksRoot = path.resolve(hooksDir);
+  const resolved = path.resolve(hooksRoot, candidate);
+  const relative = path.relative(hooksRoot, resolved);
+
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  return resolved;
+}
+
 export async function buildLifecycleHookMarkdown(params: {
   lifecycle: HookLifecycle;
   activeHookConfig: HookConfig;
@@ -145,7 +157,12 @@ export async function buildLifecycleHookMarkdown(params: {
   for (const entry of entries) {
     if (typeof entry.path !== "string") continue;
 
-    const hookPath = path.join(params.hooksDir, entry.path);
+    const hookPath = resolveHookMarkdownPath(params.hooksDir, entry.path);
+    if (!hookPath) {
+      sections.push(`[${params.lifecycle}:${entry.path}]\n(Invalid hook markdown path; must stay within hooks directory)`);
+      continue;
+    }
+
     const content = await readTextFn(hookPath);
     sections.push(
       content.trim()

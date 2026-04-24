@@ -36,6 +36,32 @@ Check CI status on a PR:
 gh pr checks 55 --repo owner/repo
 ```
 
+### Reply to reviewer comments in-thread (preferred)
+
+List review comments and IDs:
+```bash
+gh api repos/OWNER/REPO/pulls/55/comments \
+  --jq '.[] | {id, in_reply_to_id, user: .user.login, body, path, line, html_url}'
+```
+
+Reply directly to a review comment thread:
+```bash
+gh api -X POST repos/OWNER/REPO/pulls/55/comments \
+  -F in_reply_to=COMMENT_ID \
+  -f body='Thanks — addressed in commit abc123 on <file/section>.'
+```
+
+Delete mistaken general/standalone replies:
+```bash
+# General PR comment
+gh api -X DELETE repos/OWNER/REPO/issues/comments/ISSUE_COMMENT_ID
+
+# PR review comment
+gh api -X DELETE repos/OWNER/REPO/pulls/comments/REVIEW_COMMENT_ID
+```
+
+Use `gh pr comment` only when there is no thread to reply to.
+
 List recent workflow runs:
 ```bash
 gh run list --repo owner/repo --limit 10

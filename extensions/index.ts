@@ -418,8 +418,11 @@ export default function pesapExtension(pi: ExtensionAPI): void {
 
     const preflight = parsePreflightLine(text, nowIso);
     if (preflight) {
-      runtimeState.activePreflight = preflight;
-      appendPreflightEntry(pi, preflight);
+      const scopedPreflight = pendingWorkflow
+        ? { ...preflight, workflowId: pendingWorkflow.id }
+        : preflight;
+      runtimeState.activePreflight = scopedPreflight;
+      appendPreflightEntry(pi, scopedPreflight);
       return;
     }
 
@@ -440,6 +443,7 @@ export default function pesapExtension(pi: ExtensionAPI): void {
       preflightMode: runtimeState.firstPrinciplesConfig.preflightMode,
       preflight: runtimeState.activePreflight,
       toolName: event.toolName,
+      activeWorkflowId: pendingWorkflow?.id ?? null,
     });
 
     addPolicyEvent(pi, {
@@ -468,7 +472,6 @@ export default function pesapExtension(pi: ExtensionAPI): void {
   pi.on("agent_end", async (event, ctx) => {
     const workflow = pendingWorkflow;
     if (!workflow) return;
-    pendingWorkflow = null;
 
     const text = extractLastAssistantText(event.messages) || "No assistant output captured.";
 
@@ -494,7 +497,11 @@ export default function pesapExtension(pi: ExtensionAPI): void {
       }
     }
 
-    await completeWorkflowTracking(pi, ctx, workflow, text);
+    try {
+      await completeWorkflowTracking(pi, ctx, workflow, text);
+    } finally {
+      pendingWorkflow = null;
+    }
   });
 
   const agentHandlers = createAgentCommandHandlers({
@@ -534,6 +541,7 @@ export default function pesapExtension(pi: ExtensionAPI): void {
     appendRiskApprovalEntry: (approval) => appendRiskApprovalEntry(pi, approval),
     appendPreflightEntry: (record) => appendPreflightEntry(pi, record),
     appendPostflightEntry: (record) => appendPostflightEntry(pi, record),
+    getActiveWorkflowId: () => pendingWorkflow?.id ?? null,
   });
 
   const workflowHandlers = createWorkflowCommandHandlers({
